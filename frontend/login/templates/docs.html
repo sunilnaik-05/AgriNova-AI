@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Documents | Personal Drive</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: system-ui, sans-serif;
+            background: #020617;
+            color: #e5e7eb;
+            padding: 1rem;
+        }
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+            margin-bottom: 0.8rem;
+        }
+        .left-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+        .back-link {
+            text-decoration: none;
+            color: #e5e7eb;
+            font-size: 0.9rem;
+        }
+        .back-link span {
+            margin-right: 0.2rem;
+        }
+        h1 {
+            font-size: 1.2rem;
+        }
+
+        .tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.8rem;
+            font-size: 0.8rem;
+        }
+        .tools input[type="text"] {
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid #374151;
+            background: #020617;
+            color: #e5e7eb;
+        }
+        .tools select {
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid #374151;
+            background: #020617;
+            color: #e5e7eb;
+        }
+        .tools button {
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid #4b5563;
+            background: #111827;
+            color: #e5e7eb;
+            cursor: pointer;
+        }
+        .tools button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+
+        .list {
+            margin-top: 0.6rem;
+        }
+        .doc-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid #111827;
+            font-size: 0.9rem;
+        }
+        .doc-left {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .icon {
+            font-size: 1.3rem;
+        }
+        .doc-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 220px;
+        }
+        .doc-right {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .doc-actions a {
+            font-size: 0.8rem;
+            color: #a5b4fc;
+            text-decoration: none;
+        }
+        .select-box input[type="checkbox"] {
+            transform: scale(1.1);
+        }
+        .empty {
+            font-size: 0.9rem;
+            color: #9ca3af;
+            margin-top: 1rem;
+        }
+
+        /* Overlay viewer */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .overlay.show {
+            display: flex;
+        }
+        .overlay-inner {
+            position: relative;
+            max-width: 95vw;
+            max-height: 95vh;
+            width: 90vw;
+            height: 90vh;
+            background: #020617;
+        }
+        .overlay-inner iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .overlay-close {
+            position: absolute;
+            top: -36px;
+            right: 0;
+            background: rgba(15,23,42,0.9);
+            border-radius: 999px;
+            border: 1px solid #4b5563;
+            color: #e5e7eb;
+            padding: 0.3rem 0.7rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <form method="POST" action="{{ url_for('delete_multiple') }}">
+        <input type="hidden" name="redirect_to" value="docs" />
+
+        <div class="top-bar">
+            <div class="left-bar">
+                <a href="{{ url_for('dashboard') }}" class="back-link">
+                    <span>←</span> Back
+                </a>
+                <h1>Documents</h1>
+            </div>
+        </div>
+
+        <div class="tools">
+            <input type="text" id="searchInput" placeholder="Search documents..." />
+            <select id="sortSelect">
+                <option value="default">Sort: Newest</option>
+                <option value="az">Name A–Z</option>
+                <option value="za">Name Z–A</option>
+            </select>
+            <button type="submit" id="deleteSelected" disabled>Delete selected</button>
+        </div>
+
+        {% if files %}
+        <div class="list" id="docList">
+            {% for f in files %}
+            <div class="doc-item"
+                 data-name="{{ f.display_name | lower }}"
+                 data-order="{{ loop.index0 }}">
+                <div class="doc-left">
+                    <span class="icon">📄</span>
+                    <span class="doc-name" title="{{ f.display_name }}">{{ f.display_name }}</span>
+                </div>
+                <div class="doc-right">
+                    <div class="select-box">
+                        <input type="checkbox" name="selected_files" value="{{ f.name }}" />
+                    </div>
+                    <div class="doc-actions">
+                        <a href="{{ f.view_url }}" class="open-inline" data-view-url="{{ f.view_url }}">Open</a>
+                        <a href="{{ f.download_url }}">Download</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No documents yet. Upload from dashboard.</p>
+        {% endif %}
+    </form>
+
+    <!-- Inline doc viewer -->
+    <div class="overlay" id="viewerOverlay">
+        <div class="overlay-inner">
+            <button class="overlay-close" id="viewerClose">Close ✕</button>
+            <iframe id="viewerFrame" src=""></iframe>
+        </div>
+    </div>
+
+    <script>
+        // Inline doc viewer
+        const overlay = document.getElementById("viewerOverlay");
+        const viewerFrame = document.getElementById("viewerFrame");
+        const viewerClose = document.getElementById("viewerClose");
+
+        document.querySelectorAll(".open-inline").forEach(link => {
+            link.addEventListener("click", e => {
+                e.preventDefault();
+                const url = link.getAttribute("data-view-url");
+                viewerFrame.src = url;
+                overlay.classList.add("show");
+            });
+        });
+
+        function closeOverlay() {
+            overlay.classList.remove("show");
+            viewerFrame.src = "";
+        }
+
+        viewerClose.addEventListener("click", closeOverlay);
+        overlay.addEventListener("click", e => {
+            if (e.target === overlay) {
+                closeOverlay();
+            }
+        });
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape") closeOverlay();
+        });
+
+        // Search + sort + delete button enable
+        const searchInput = document.getElementById("searchInput");
+        const sortSelect = document.getElementById("sortSelect");
+        const list = document.getElementById("docList");
+        const deleteBtn = document.getElementById("deleteSelected");
+
+        function updateDeleteButton() {
+            const anyChecked = !!document.querySelector(
+                '.list input[type="checkbox"]:checked'
+            );
+            deleteBtn.disabled = !anyChecked;
+        }
+
+        document.addEventListener("change", e => {
+            if (e.target.matches('.list input[type="checkbox"]')) {
+                updateDeleteButton();
+            }
+        });
+
+        if (searchInput) {
+            searchInput.addEventListener("input", () => {
+                const q = searchInput.value.toLowerCase();
+                document.querySelectorAll("#docList .doc-item").forEach(item => {
+                    const name = item.getAttribute("data-name") || "";
+                    item.style.display = name.includes(q) ? "" : "none";
+                });
+            });
+        }
+
+        if (sortSelect) {
+            sortSelect.addEventListener("change", () => {
+                const value = sortSelect.value;
+                const items = Array.from(document.querySelectorAll("#docList .doc-item"));
+                let sorted = items.slice();
+
+                if (value === "az") {
+                    sorted.sort((a, b) =>
+                        (a.dataset.name || "").localeCompare(b.dataset.name || "")
+                    );
+                } else if (value === "za") {
+                    sorted.sort((a, b) =>
+                        (b.dataset.name || "").localeCompare(a.dataset.name || "")
+                    );
+                } else {
+                    sorted.sort((a, b) =>
+                        Number(a.dataset.order) - Number(b.dataset.order)
+                    );
+                }
+
+                sorted.forEach(el => list.appendChild(el));
+            });
+        }
+
+        // Initial
+        updateDeleteButton();
+    </script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Photos | Personal Drive</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: system-ui, sans-serif;
+            background: #020617;
+            color: #e5e7eb;
+            padding: 1rem;
+        }
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+            margin-bottom: 0.8rem;
+        }
+        .left-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+        .back-link {
+            text-decoration: none;
+            color: #e5e7eb;
+            font-size: 0.9rem;
+        }
+        .back-link span {
+            margin-right: 0.2rem;
+        }
+        h1 {
+            font-size: 1.2rem;
+        }
+
+        .tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.8rem;
+            font-size: 0.8rem;
+        }
+        .tools input[type="text"] {
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid #374151;
+            background: #020617;
+            color: #e5e7eb;
+        }
+        .tools select {
+            padding: 0.3rem 0.5rem;
+            border-radius: 999px;
+            border: 1px solid #374151;
+            background: #020617;
+            color: #e5e7eb;
+        }
+        .tools button {
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid #4b5563;
+            background: #111827;
+            color: #e5e7eb;
+            cursor: pointer;
+        }
+        .tools button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 0.6rem;
+        }
+        .item {
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+            position: relative;
+        }
+        .thumb-link {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .thumb-link img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .select-box {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(0,0,0,0.65);
+            border-radius: 999px;
+            padding: 2px 5px;
+        }
+        .select-box input[type="checkbox"] {
+            transform: scale(1.1);
+        }
+        .name-label {
+            position: absolute;
+            left: 4px;
+            bottom: 4px;
+            right: 4px;
+            font-size: 0.7rem;
+            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+            padding: 4px 4px 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .empty {
+            font-size: 0.9rem;
+            color: #9ca3af;
+            margin-top: 1rem;
+        }
+
+        /* Overlay viewer */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .overlay.show {
+            display: flex;
+        }
+        .overlay-inner {
+            position: relative;
+            max-width: 95vw;
+            max-height: 95vh;
+        }
+        .overlay-inner img {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+        }
+        .overlay-close {
+            position: absolute;
+            top: -36px;
+            right: 0;
+            background: rgba(15,23,42,0.9);
+            border-radius: 999px;
+            border: 1px solid #4b5563;
+            color: #e5e7eb;
+            padding: 0.3rem 0.7rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <form method="POST" action="{{ url_for('delete_multiple') }}">
+        <input type="hidden" name="redirect_to" value="photos" />
+
+        <div class="top-bar">
+            <div class="left-bar">
+                <a href="{{ url_for('dashboard') }}" class="back-link">
+                    <span>←</span> Back
+                </a>
+                <h1>Photos</h1>
+            </div>
+        </div>
+
+        <div class="tools">
+            <input type="text" id="searchInput" placeholder="Search photos..." />
+            <select id="sortSelect">
+                <option value="default">Sort: Newest</option>
+                <option value="az">Name A–Z</option>
+                <option value="za">Name Z–A</option>
+            </select>
+            <button type="submit" id="deleteSelected" disabled>Delete selected</button>
+        </div>
+
+        {% if files %}
+        <div class="grid" id="photoGrid">
+            {% for f in files %}
+            <div class="item"
+                 data-name="{{ f.display_name | lower }}"
+                 data-order="{{ loop.index0 }}">
+                <a href="{{ f.view_url }}"
+                   class="thumb-link"
+                   data-view-url="{{ f.view_url }}"
+                   data-name="{{ f.display_name }}">
+                    <img src="{{ f.view_url }}" alt="{{ f.display_name }}">
+                </a>
+                <div class="select-box">
+                    <input type="checkbox" name="selected_files" value="{{ f.name }}" />
+                </div>
+                <div class="name-label" title="{{ f.display_name }}">
+                    {{ f.display_name }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty">No photos yet. Upload from dashboard.</p>
+        {% endif %}
+    </form>
+
+    <!-- Full-screen viewer overlay -->
+    <div class="overlay" id="viewerOverlay">
+        <div class="overlay-inner">
+            <button class="overlay-close" id="viewerClose">Close ✕</button>
+            <img id="viewerImage" src="" alt="" />
+        </div>
+    </div>
+
+    <script>
+        // Full-screen viewer
+        const overlay = document.getElementById("viewerOverlay");
+        const viewerImg = document.getElementById("viewerImage");
+        const viewerClose = document.getElementById("viewerClose");
+
+        document.querySelectorAll(".thumb-link").forEach(link => {
+            link.addEventListener("click", e => {
+                e.preventDefault();
+                const url = link.getAttribute("data-view-url");
+                viewerImg.src = url;
+                overlay.classList.add("show");
+            });
+        });
+
+        function closeOverlay() {
+            overlay.classList.remove("show");
+            viewerImg.src = "";
+        }
+
+        viewerClose.addEventListener("click", closeOverlay);
+        overlay.addEventListener("click", e => {
+            if (e.target === overlay) {
+                closeOverlay();
+            }
+        });
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape") closeOverlay();
+        });
+
+        // Search + sort + delete button enable
+        const searchInput = document.getElementById("searchInput");
+        const sortSelect = document.getElementById("sortSelect");
+        const grid = document.getElementById("photoGrid");
+        const deleteBtn = document.getElementById("deleteSelected");
+
+        function updateDeleteButton() {
+            const anyChecked = !!document.querySelector(
+                '.grid input[type="checkbox"]:checked'
+            );
+            deleteBtn.disabled = !anyChecked;
+        }
+
+        document.addEventListener("change", e => {
+            if (e.target.matches('.grid input[type="checkbox"]')) {
+                updateDeleteButton();
+            }
+        });
+
+        if (searchInput) {
+            searchInput.addEventListener("input", () => {
+                const q = searchInput.value.toLowerCase();
+                document.querySelectorAll("#photoGrid .item").forEach(item => {
+                    const name = item.getAttribute("data-name") || "";
+                    item.style.display = name.includes(q) ? "" : "none";
+                });
+            });
+        }
+
+        if (sortSelect) {
+            sortSelect.addEventListener("change", () => {
+                const value = sortSelect.value;
+                const items = Array.from(document.querySelectorAll("#photoGrid .item"));
+                let sorted = items.slice();
+
+                if (value === "az") {
+                    sorted.sort((a, b) =>
+                        (a.dataset.name || "").localeCompare(b.dataset.name || "")
+                    );
+                } else if (value === "za") {
+                    sorted.sort((a, b) =>
+                        (b.dataset.name || "").localeCompare(a.dataset.name || "")
+                    );
+                } else {
+                    sorted.sort((a, b) =>
+                        Number(a.dataset.order) - Number(b.dataset.order)
+                    );
+                }
+
+                sorted.forEach(el => grid.appendChild(el));
+            });
+        }
+
+        // Initial state
+        updateDeleteButton();
+    </script>
+</body>
+</html>
