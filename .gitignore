@@ -1,0 +1,7 @@
+
+.env
+cookies.txt
+server.log
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
