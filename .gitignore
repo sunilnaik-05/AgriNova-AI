@@ -1,7 +1,12 @@
-
 .env
 cookies.txt
 server.log
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+
+# RAG Database
+chroma_db/
+venv/
+env/
+data/*.pdf

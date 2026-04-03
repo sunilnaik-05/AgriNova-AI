@@ -669,7 +669,7 @@
 
         // ─── Text-to-Speech (TTS) ────────────────────────────────────────
         let currentUtterance = null; // Store globally to prevent garbage collection bug
-        function playTTS(text, emotion = 'neutral') {
+        function playTTS(text, emotion = 'neutral', activeBtn = null) {
             if (!('speechSynthesis' in window)) return;
             
             // Clean text comprehensively for extremely smooth TTS playback:
@@ -693,16 +693,17 @@
                 currentUtterance.lang = langCode; 
                 
                 // Adjust Speed (Rate) and Emotion (Pitch)
-                currentUtterance.rate = 0.82; // Slower, more natural speed
+                // Browser Kannada TTS stutters heavily if slowed down too much, so we keep it closer to 1.0
+                currentUtterance.rate = (langCode === 'kn-IN') ? 0.95 : 0.82; 
                 
                 if (emotion === 'happy') {
                     currentUtterance.pitch = 1.25;
                 } else if (emotion === 'sad') {
                     currentUtterance.pitch = 0.75;
-                    currentUtterance.rate = 0.75; // Slower when sad
+                    currentUtterance.rate = (langCode === 'kn-IN') ? 0.90 : 0.75; // Slower when sad
                 } else if (emotion === 'angry') {
                     currentUtterance.pitch = 1.1;
-                    currentUtterance.rate = 0.90; // Slightly faster when angry
+                    currentUtterance.rate = (langCode === 'kn-IN') ? 1.0 : 0.90; // Slightly faster when angry
                 } else if (emotion === 'stressed' || emotion === 'confused') {
                     currentUtterance.pitch = 0.9;
                 } else {
@@ -715,6 +716,19 @@
                 if (desiVoice) {
                     currentUtterance.voice = desiVoice;
                 }
+                
+                currentUtterance.onend = () => {
+                    if (activeBtn) {
+                        activeBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+                        activeBtn.style.color = '#9ca3af';
+                    }
+                };
+                currentUtterance.onerror = () => {
+                    if (activeBtn) {
+                        activeBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+                        activeBtn.style.color = '#9ca3af';
+                    }
+                };
                 
                 window.speechSynthesis.speak(currentUtterance);
             }, 50); // Small delay prevents 'cancel()' bug in Chrome
@@ -735,14 +749,58 @@
             // Hide raw HTML/SSML tags from the visual UI smoothly without extra dots
             textDiv.innerHTML = text.replace(/<[^>]*>/g, ' ').replace(/\n/g, '<br/>');
 
-            // Show emotion tag on bot messages
-            if (role === 'bot' && emotion && emotion !== 'neutral') {
-                const e = EMOTION_ICONS[emotion] || EMOTION_ICONS.neutral;
-                const tag = document.createElement('div');
-                tag.className = 'emotion-tag';
-                tag.style.color = e.color;
-                tag.textContent = `${e.icon} ${e.label}`;
-                textDiv.appendChild(tag);
+            // Add Replay button and emotion tag on bot messages
+            if (role === 'bot') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.style.marginTop = '0.5rem';
+                actionsDiv.style.display = 'flex';
+                actionsDiv.style.gap = '0.75rem';
+                actionsDiv.style.alignItems = 'center';
+
+                const replayBtn = document.createElement('button');
+                replayBtn.className = 'msg-play-btn';
+                replayBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+                replayBtn.title = "Play / Stop message";
+                replayBtn.style.background = 'none';
+                replayBtn.style.border = 'none';
+                replayBtn.style.color = '#9ca3af';
+                replayBtn.style.cursor = 'pointer';
+                replayBtn.style.padding = '0.1rem';
+                replayBtn.style.fontSize = '0.9rem';
+                replayBtn.addEventListener('mouseenter', () => { if(!replayBtn.innerHTML.includes('fa-volume-mute')) replayBtn.style.color = 'var(--primary)'; });
+                replayBtn.addEventListener('mouseleave', () => { if(!replayBtn.innerHTML.includes('fa-volume-mute')) replayBtn.style.color = '#9ca3af'; });
+                
+                replayBtn.addEventListener('click', () => {
+                    const isPlayingThis = replayBtn.innerHTML.includes('fa-volume-mute');
+                    
+                    // Reset all other buttons
+                    document.querySelectorAll('.msg-play-btn').forEach(btn => {
+                        btn.innerHTML = '<i class="fas fa-volume-up"></i>';
+                        btn.style.color = '#9ca3af';
+                    });
+
+                    if (isPlayingThis) {
+                        window.speechSynthesis.cancel();
+                    } else {
+                        replayBtn.innerHTML = '<i class="fas fa-volume-mute"></i>';
+                        replayBtn.style.color = '#ef4444'; // Red for playing/stop mode
+                        playTTS(text, emotion, replayBtn);
+                    }
+                });
+                
+                actionsDiv.appendChild(replayBtn);
+
+                if (emotion && emotion !== 'neutral') {
+                    const e = EMOTION_ICONS[emotion] || EMOTION_ICONS.neutral;
+                    const tag = document.createElement('div');
+                    tag.className = 'emotion-tag';
+                    tag.style.color = e.color;
+                    tag.style.marginTop = '0';
+                    tag.textContent = `${e.icon} ${e.label}`;
+                    actionsDiv.appendChild(tag);
+                }
+
+                textDiv.appendChild(actionsDiv);
             }
 
             msgDiv.appendChild(avatarDiv);
@@ -756,7 +814,7 @@
                 saveChatHistory();
                 updateSidebarHistory(text);
             } else if (role === 'bot') {
-                playTTS(text, emotion);
+                // Auto play is turned off. User must click the speaker icon on the message.
             }
         }
 

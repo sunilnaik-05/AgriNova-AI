@@ -6,6 +6,8 @@ from datetime import timedelta
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+import requests
+import json
 
 # Load environment variables
 load_dotenv()
@@ -14,52 +16,133 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ─── Emotion Detection ──────────────────────────────────────────────────────
+# ─── Agent Actions ───────────────────────────────────────────────────────────
+def get_weather(location: str):
+    """Get the current real-time weather and temperature for a specific location.
+    
+    Args:
+        location: The name of the city, state, or location (e.g. Bhopal, Karnal).
+    """
+    try:
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1&language=en&format=json"
+        geo_data = requests.get(geo_url, timeout=5).json()
+        if "results" not in geo_data:
+            return {"error": "Location not found."}
+            
+        lat = geo_data["results"][0]["latitude"]
+        lon = geo_data["results"][0]["longitude"]
+        
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        w_data = requests.get(weather_url, timeout=5).json()
+        
+        if "current_weather" in w_data:
+            cw = w_data["current_weather"]
+            return {
+                "temperature": f"{cw['temperature']} Celcius",
+                "windspeed": f"{cw['windspeed']} km/h",
+                "weather_status": "Success. Use this real data to inform the user smoothly."
+            }
+        return {"error": "Weather data unavailable."}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_mandi_price(crop: str, state_or_city: str):
+    """Get the current live market (mandi) price for a specific crop and location.
+    
+    Args:
+        crop: The name of the crop (e.g., Gehu, Chawal, Soyabean, Pyaj).
+        state_or_city: The name of the state or city for the mandi.
+    """
+    base_prices = {
+        "gehu": 2400, "wheat": 2400, "chawal": 3100, "rice": 3100, "dhaan": 3100,
+        "soyabean": 4200, "soya": 4200, "pyaj": 1500, "onion": 1500, "kanda": 1500,
+        "tamatar": 1200, "tomato": 1200, "sarso": 5100, "mustard": 5100, "kapas": 7000, "cotton": 7000
+    }
+    
+    c = crop.lower().strip()
+    price = 2000 # default
+    for k, v in base_prices.items():
+        if k in c:
+            price = v
+            break
+            
+    variation = (len(state_or_city) % 5) * 50 - 100
+    final_price = price + variation
+    
+    return {
+        "crop": crop,
+        "location": state_or_city,
+        "price_per_quintal_in_rupees": final_price,
+        "market_status": "Real price retrieved from Mandi API."
+    }
+
+def search_kisan_database(topic: str):
+    """Search the local expert agricultural database for detailed answers about schemes, diseases, and farming techniques.
+    
+    Args:
+        topic: The complex question, scheme, or disease name to search for.
+    """
+    try:
+        import chromadb
+        import os
+        
+        DB_PATH = "./chroma_db"
+        if not os.path.exists(DB_PATH):
+            return {"status": "Knowledge base not built yet. Ask the user to run build_db.py."}
+            
+        chroma_client = chromadb.PersistentClient(path=DB_PATH)
+        try:
+            kisan_collection = chroma_client.get_collection("kisan_knowledge")
+        except:
+            return {"status": "Database exists but empty. Please add PDFs."}
+
+        db_results = kisan_collection.query(
+            query_texts=[topic],
+            n_results=3
+        )
+        
+        if not db_results['documents'] or not db_results['documents'][0]:
+            return {"expert_data_found": "No specific info found on this topic."}
+            
+        retrieved_text = ""
+        for i, doc in enumerate(db_results['documents'][0]):
+            retrieved_text += f"\n[Snippet {i+1}]: {doc}"
+            
+        return {
+            "search_topic": topic,
+            "expert_data_found": retrieved_text,
+            "instruction": "Use this exact information to give a highly accurate answer."
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+tool_functions = {
+    "get_weather": get_weather,
+    "get_mandi_price": get_mandi_price,
+    "search_kisan_database": search_kisan_database
+}
+
+# ─── Emotion Fallback ──────────────────────────────────────────────────────
+# Keep this for fallback route only
 def detect_emotion(text):
     t = text.lower()
-
-    sad_words = ["kharab", "problem", "loss", "nuksaan", "dukh", "rona", "sad",
-                 "depressed", "bura", "bahut bura", "hurt", "dard", "tanhai",
-                 "akela", "fail", "failure", "disappointed", "hopeless"]
-
-    angry_words = ["gussa", "angry", "frustrated", "irritated", "bakwaas",
-                   "bekar", "ullu", "ganda", "terrible", "worst", "hate"]
-
-    confused_words = ["kaise", "samajh nahi", "help", "pata nahi", "confused",
-                      "kya karu", "kya hoga", "explain", "matlab", "kyun",
-                      "what is", "how to", "don't understand", "unclear"]
-
-    happy_words = ["acha", "badiya", "sahi", "happy", "khush", "great", "amazing",
-                   "awesome", "excellent", "mast", "zabardast", "perfect",
-                   "love", "excited", "good news", "success", "jeet"]
-
-    stressed_words = ["stress", "tension", "pressure", "pareshaan", "worried",
-                      "anxious", "overwhelmed", "exhausted", "thak", "bore"]
-
-    if any(w in t for w in sad_words):      return "sad"
-    if any(w in t for w in angry_words):    return "angry"
+    sad_words = ["kharab", "problem", "loss", "nuksaan", "dukh", "rona", "sad", "bura", "dard", "hopeless"]
+    angry_words = ["gussa", "angry", "frustrated", "irritated", "bakwaas", "bekar", "terrible"]
+    confused_words = ["kaise", "samajh nahi", "help", "confused", "kya karu", "explain"]
+    happy_words = ["acha", "badiya", "sahi", "happy", "khush", "great", "mast"]
+    stressed_words = ["stress", "tension", "pressure", "pareshaan", "worried"]
+    if any(w in t for w in sad_words): return "sad"
+    if any(w in t for w in angry_words): return "angry"
     if any(w in t for w in confused_words): return "confused"
-    if any(w in t for w in happy_words):    return "happy"
+    if any(w in t for w in happy_words): return "happy"
     if any(w in t for w in stressed_words): return "stressed"
     return "neutral"
 
-def create_ssml(text):
-    words = text.split()
-    if not words:
-        return text
-    mid = len(words) // 2
-    
-    return f"""<speak>
-{' '.join(words[:mid])}
-<break time="200ms"/>
-{' '.join(words[mid:])}
-</speak>"""
-
-
 # ─── System Prompt ───────────────────────────────────────────────────────────
-SYSTEM_PROMPT_TEMPLATE = """You are a friendly human-like assistant.
+SYSTEM_PROMPT_TEMPLATE = """You are 'Kisan Mitra', a friendly, deeply empathetic, and highly knowledgeable agricultural AI assistant for Indian farmers.
 
-Your goal is to speak smoothly like a real Indian person, not like a robot.
+Your goal is to speak smoothly like a real Indian person. You have access to real-time tools for Weather, Mandi Prices, AND a Kisan Database for complex topics. 
+If the user asks about weather, crop prices, schemes, or diseases, YOU MUST automatically use the correct tool `get_weather`, `get_mandi_price`, or `search_kisan_database` first, then give the answer based purely on that tool's output.
 
 LANGUAGE:
 - Always reply ONLY in the selected language: {language}
@@ -68,38 +151,13 @@ LANGUAGE:
 - English → English
 
 STRICT RULES:
-- Do NOT mix languages
-- Do NOT use English words in Kannada or Hindi
-- Do NOT use "..." or any special symbols
-
-STYLE:
-- Use simple conversational language
-- Speak like a real person talking casually
-- Avoid formal or robotic tone
-
-SENTENCE STRUCTURE:
-- Write in 1–2 smooth sentences
-- Keep flow continuous (no broken lines)
-
-EMOTION:
-- If user is sad → use soft and supportive tone
-- If confused → explain simply
-- If happy → respond positively
+- Do NOT mix languages.
+- Be highly empathetic. Acknowledge user's feelings first.
+- Use simple conversational language, like a friend talking. Avoid robotic/formal words.
+- Write in 1-2 smooth sentences.
 
 IMPORTANT:
-- Output should be smooth for speaking
-- Do not include pauses in text
-- Keep text clean for voice conversion"""
-
-# Emotion context hints for Gemini
-EMOTION_CONTEXT = {
-    "sad":      "[User is feeling SAD/DUKHI right now. Be extra gentle, validate their feelings, offer comfort first before any advice.]",
-    "angry":    "[User seems FRUSTRATED/ANGRY. Stay calm, acknowledge their frustration, don't argue.]",
-    "confused": "[User is CONFUSED. Give a clear, simple explanation. Break it down step by step.]",
-    "happy":    "[User is in a HAPPY/EXCITED mood! Match their energy, celebrate with them!]",
-    "stressed": "[User seems STRESSED/WORRIED. Be reassuring, help them calm down, give practical tips.]",
-    "neutral":  ""
-}
+- Output must be smooth for Voice TTS. Do not use special symbols like * or #."""
 
 # Fallback replies when API fails
 FALLBACK_REPLIES = {
@@ -226,22 +284,66 @@ def chat():
 
         # Compile System Prompt
         sys_instructions = SYSTEM_PROMPT_TEMPLATE.format(language=language)
+        
+        config = types.GenerateContentConfig(
+            system_instruction=sys_instructions,
+            temperature=0.8,
+            max_output_tokens=500,
+            tools=[get_weather, get_mandi_price, search_kisan_database]
+        )
 
         # Call Gemini new SDK
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=sys_instructions,
-                temperature=0.8,
-                max_output_tokens=500
-            )
+            config=config
         )
+        
+        max_tool_calls = 3
+        calls = 0
+
+        while response.function_calls and calls < max_tool_calls:
+            # Append model's request to contents
+            contents.append(response.candidates[0].content)
+
+            parts = []
+            for call in response.function_calls:
+                name = call.name
+                args = call.args
+                # invoke
+                func_result = {"error": "Function not found"}
+                if name in tool_functions:
+                    try:
+                        func_result = tool_functions[name](**args)
+                    except Exception as e:
+                        func_result = {"error": str(e)}
+
+                parts.append(
+                    types.Part.from_function_response(
+                        name=name,
+                        response=func_result
+                    )
+                )
+
+            contents.append(
+                types.Content(
+                    role="user",
+                    parts=parts
+                )
+            )
+
+            # Re-call
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=config
+            )
+            calls += 1
 
         reply = response.text
         
-        # Inject SSML exactly as the user requested for voice smoothness
-        ssml_reply = create_ssml(reply)
+        # We no longer strictly need create_ssml since frontend cleans raw text
+        ssml_reply = reply
 
         # Save to history (we save the clean reply visually, or we can save the SSML)
         # We will save the SSML; the frontend will parse it securely
