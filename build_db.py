@@ -73,7 +73,7 @@ def build():
         metadatas=meta,
         ids=ids
     )
-    print("✅ Database successfully built! The agent can now answer using this knowledge.")
+    print("Database successfully built! The agent can now answer using this knowledge.")
 
 if __name__ == "__main__":
     build()

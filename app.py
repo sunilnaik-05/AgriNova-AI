@@ -10,7 +10,7 @@ import requests
 import json
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Configure Gemini (new SDK)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -364,6 +364,8 @@ def chat():
 
     except Exception as e:
         error_msg = str(e)
+        with open("error.log", "w", encoding="utf-8") as f:
+            f.write(traceback.format_exc())
         traceback.print_exc()
         print("=== CHAT ERROR ===", error_msg[:200])
 
