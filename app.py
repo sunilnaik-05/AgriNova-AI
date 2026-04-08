@@ -18,33 +18,92 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ─── Agent Actions ───────────────────────────────────────────────────────────
 def get_weather(location: str):
-    """Get the current real-time weather and temperature for a specific location.
+    """Get the current real-time weather and temperature for a specific location including villages.
     
     Args:
-        location: The name of the city, state, or location (e.g. Bhopal, Karnal).
+        location: The name of the city, village, town, or location (e.g. Bhopal, Haveri, Koppal, Yadgir).
     """
+    # WMO weather code → human description
+    WMO_CODES = {
+        0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+        45: "Foggy", 48: "Icy fog",
+        51: "Light drizzle", 53: "Moderate drizzle", 55: "Heavy drizzle",
+        61: "Light rain", 63: "Moderate rain", 65: "Heavy rain",
+        71: "Light snow", 73: "Moderate snow", 75: "Heavy snow",
+        77: "Snow grains",
+        80: "Light rain showers", 81: "Moderate rain showers", 82: "Heavy rain showers",
+        85: "Snow showers", 86: "Heavy snow showers",
+        95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Thunderstorm with heavy hail",
+    }
+
     try:
-        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1&language=en&format=json"
-        geo_data = requests.get(geo_url, timeout=5).json()
-        if "results" not in geo_data:
-            return {"error": "Location not found."}
-            
-        lat = geo_data["results"][0]["latitude"]
-        lon = geo_data["results"][0]["longitude"]
-        
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-        w_data = requests.get(weather_url, timeout=5).json()
-        
-        if "current_weather" in w_data:
-            cw = w_data["current_weather"]
+        # Search with count=5 to improve village match accuracy; add India bias
+        geo_url = (
+            f"https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={requests.utils.quote(location)}&count=5&language=en&format=json"
+        )
+        geo_data = requests.get(geo_url, timeout=8).json()
+
+        if "results" not in geo_data or not geo_data["results"]:
             return {
-                "temperature": f"{cw['temperature']} Celcius",
-                "windspeed": f"{cw['windspeed']} km/h",
-                "weather_status": "Success. Use this real data to inform the user smoothly."
+                "error": f"Location '{location}' not found. Try a nearby town or district name.",
+                "suggestion": "Use the nearest district headquarters or taluka name."
             }
-        return {"error": "Weather data unavailable."}
+
+        # Pick the best result — prefer India if multiple countries found
+        r = geo_data["results"][0]
+        for res in geo_data["results"]:
+            if res.get("country_code") == "IN":
+                r = res
+                break
+
+        lat = r["latitude"]
+        lon = r["longitude"]
+        place_name = r.get("name", location)
+        admin1 = r.get("admin1", "")   # state
+        country = r.get("country", "")
+
+        # Fetch weather — also grab humidity, feels-like, rain
+        weather_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current_weather=true"
+            f"&hourly=relative_humidity_2m,apparent_temperature,precipitation_probability"
+            f"&timezone=Asia%2FKolkata"
+            f"&forecast_days=1"
+        )
+        w_data = requests.get(weather_url, timeout=8).json()
+
+        if "current_weather" not in w_data:
+            return {"error": "Weather data unavailable. Try again later."}
+
+        cw = w_data["current_weather"]
+        temp     = cw.get("temperature")
+        windspd  = cw.get("windspeed")
+        wmo_code = cw.get("weathercode", 0)
+        condition = WMO_CODES.get(wmo_code, "Unknown")
+
+        # Get current-hour humidity / apparent temp / rain probability from hourly[0]
+        hourly = w_data.get("hourly", {})
+        humidity    = hourly.get("relative_humidity_2m", [None])[0]
+        feels_like  = hourly.get("apparent_temperature",  [None])[0]
+        rain_chance = hourly.get("precipitation_probability", [None])[0]
+
+        result = {
+            "location": f"{place_name}, {admin1}, {country}".strip(", "),
+            "temperature_celsius": temp,
+            "feels_like_celsius": feels_like,
+            "condition": condition,
+            "windspeed_kmh": windspd,
+            "humidity_percent": humidity,
+            "rain_probability_percent": rain_chance,
+            "status": "Live weather data. Present this naturally and helpfully to the farmer."
+        }
+        return result
+
     except Exception as e:
         return {"error": str(e)}
+
 
 def get_mandi_price(crop: str, state_or_city: str):
     """Get the current live market (mandi) price for a specific crop and location.
@@ -375,14 +434,16 @@ def chat():
         except Exception:
             emotion = "neutral"
 
-        # Check if quota/rate limit
-        if "429" in error_msg or "quota" in error_msg.lower() or "ResourceExhausted" in error_msg:
-            reply = FALLBACK_REPLIES.get(emotion, FALLBACK_REPLIES["neutral"])
-            reply += "\n\n_(Note: AI temporarily unavailable due to quota limit. Fallback mode active.)_"
-            return jsonify({"reply": reply, "emotion": emotion, "mode": "fallback"})
-
         reply = FALLBACK_REPLIES.get(emotion, FALLBACK_REPLIES["neutral"])
+
+        # Check if quota/rate limit or server overloaded (503)
+        if "429" in error_msg or "quota" in error_msg.lower() or "ResourceExhausted" in error_msg:
+            reply += "\n\n_(Note: AI quota limit reached. Fallback mode active.)_"
+        elif "503" in error_msg or "500" in error_msg or "unavailable" in error_msg.lower():
+            reply += "\n\n_(Note: AI servers pe abhi bahut load hai! Please kuch minutes baad try karein 🙏)_"
+            
         return jsonify({"reply": reply, "emotion": emotion, "mode": "fallback"})
+
 
 
 @app.route("/api/clear_chat", methods=["POST"])
