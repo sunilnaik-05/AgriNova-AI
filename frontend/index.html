@@ -57,8 +57,19 @@
         </div>
 
         <div class="input-container">
+            <!-- Image Preview UI -->
+            <div id="imagePreviewContainer" class="image-preview-container" style="display: none;">
+                <img id="imagePreview" src="" alt="Selected image">
+                <button id="clearImageBtn" title="Remove image">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
             <div class="input-wrapper">
                 <textarea id="userInput" placeholder="Kuch bhi pucho... main samjhunga 😊" rows="1"></textarea>
+                <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                <button class="voice-btn image-upload-btn" id="imageUploadBtn" title="Upload image">
+                    <i class="fas fa-image"></i>
+                </button>
                 <button class="voice-btn" id="voiceButton" title="Voice input">
                     <i class="fas fa-microphone"></i>
                 </button>
@@ -164,8 +175,14 @@
         const chatHistory = document.getElementById('chatHistory');
         const voiceButton = document.getElementById('voiceButton');
         const logoutBtn = document.getElementById('logoutBtn');
+        const imageInput = document.getElementById('imageInput');
+        const imageUploadBtn = document.getElementById('imageUploadBtn');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const clearImageBtn = document.getElementById('clearImageBtn');
 
         let isWaiting = false;
+        let selectedImageBase64 = null;
         let recognition = null;
         let chatSessions = JSON.parse(localStorage.getItem('alphaChatSessions') || '[]');
         let currentSessionId = null;
@@ -322,7 +339,7 @@
             }, 50); // Small delay prevents 'cancel()' bug in Chrome
         }
 
-        function addMessage(role, text, emotion = null, isHistorical = false) {
+        function addMessage(role, text, emotion = null, isHistorical = false, imageUrl = null) {
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${role === 'user' ? 'user-message' : 'bot-message'}`;
 
@@ -334,8 +351,21 @@
 
             const textDiv = document.createElement('div');
             textDiv.className = 'message-text';
-            // Hide raw HTML/SSML tags from the visual UI smoothly without extra dots
-            textDiv.innerHTML = text.replace(/<[^>]*>/g, ' ').replace(/\n/g, '<br/>');
+            
+            if (imageUrl) {
+                const imgWrapper = document.createElement('div');
+                imgWrapper.className = 'msg-image-wrapper';
+                const imgEl = document.createElement('img');
+                imgEl.src = imageUrl;
+                imgEl.className = 'msg-attached-image';
+                imgWrapper.appendChild(imgEl);
+                textDiv.appendChild(imgWrapper);
+            }
+
+            const textSpan = document.createElement('span');
+            textSpan.className = 'msg-text-content';
+            textSpan.innerHTML = text.replace(/<[^>]*>/g, ' ').replace(/\n/g, '<br/>');
+            textDiv.appendChild(textSpan);
 
             // ── User message: Copy + Inline Edit buttons ─────────────────
             if (role === 'user') {
@@ -509,14 +539,18 @@
 
             // Save to history — sirf tab jab USER message bheje (bot welcome pe nahi)
             if (!isHistorical && role === 'user') {
+                let titleText = text || "[Image Attached]";
                 if (!currentSessionId) {
                     currentSessionId = generateId();
                     currentSessionActive = true;
-                    chatSessions.push({ id: currentSessionId, title: text, messages: [] });
+                    chatSessions.push({ id: currentSessionId, title: titleText, messages: [] });
                 }
                 const session = chatSessions.find(s => s.id === currentSessionId);
                 if (session) {
-                    session.messages.push({ role, text, emotion, time: Date.now() });
+                    let displayMsg = text;
+                    if (imageUrl && !text) { displayMsg = "[📷 Image sent]"; }
+                    else if (imageUrl) { displayMsg = "📷 [Image attached] " + text; }
+                    session.messages.push({ role, text: displayMsg, emotion, time: Date.now() });
                     saveChatSessions();
                 }
             } else if (!isHistorical && role === 'bot' && currentSessionId) {
@@ -558,11 +592,18 @@
             const message = userInput.value.trim();
             const langSelect = document.getElementById('langSelect');
             const language = langSelect ? langSelect.value : 'Kannada';
-            if (!message || isWaiting) return;
+            if ((!message && !selectedImageBase64) || isWaiting) return;
 
             isWaiting = true;
             sendButton.disabled = true;
-            addMessage('user', message);
+            addMessage('user', message, null, false, selectedImageBase64);
+            
+            const payload = { message, language };
+            if (selectedImageBase64) {
+                payload.image = selectedImageBase64;
+                clearImagePreview();
+            }
+
             userInput.value = '';
             userInput.style.height = 'auto';
             showTyping();
@@ -572,7 +613,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ message, language })
+                    body: JSON.stringify(payload)
                 });
 
                 removeTyping();
@@ -705,6 +746,45 @@
                 sidebar.classList.add('closed');
                 openSidebarBtn.style.display = 'block';
             }
+        }
+
+        // ─── Image Upload ────────────────────────────────────────────────
+        if (imageUploadBtn) {
+            imageUploadBtn.addEventListener('click', () => {
+                imageInput.click();
+            });
+        }
+
+        if (imageInput) {
+            imageInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (file.size > 5 * 1024 * 1024) {
+                    alert("File size should be less than 5MB!");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    selectedImageBase64 = ev.target.result;
+                    imagePreview.src = selectedImageBase64;
+                    imagePreviewContainer.style.display = 'flex';
+                    userInput.focus();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function clearImagePreview() {
+            selectedImageBase64 = null;
+            if (imageInput) imageInput.value = '';
+            if (imagePreview) imagePreview.src = '';
+            if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
+        }
+
+        if (clearImageBtn) {
+            clearImageBtn.addEventListener('click', clearImagePreview);
         }
 
         // ─── Voice Input ─────────────────────────────────────────────────

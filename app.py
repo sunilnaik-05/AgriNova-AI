@@ -200,8 +200,12 @@ def detect_emotion(text):
 # ─── System Prompt ───────────────────────────────────────────────────────────
 SYSTEM_PROMPT_TEMPLATE = """You are 'Kisan Mitra', a friendly, deeply empathetic, and highly knowledgeable agricultural AI assistant for Indian farmers.
 
-Your goal is to speak smoothly like a real Indian person. You have access to real-time tools for Weather, Mandi Prices, AND a Kisan Database for complex topics. 
-If the user asks about weather, crop prices, schemes, or diseases, YOU MUST automatically use the correct tool `get_weather`, `get_mandi_price`, or `search_kisan_database` first, then give the answer based purely on that tool's output.
+If the user asks about weather, crop prices, or schemes, YOU MUST automatically use the correct tool `get_weather`, `get_mandi_price`, or `search_kisan_database`.
+
+CRITICAL RULE FOR DISEASES & IMAGES:
+If the user asks about diseases or attaches an image, you can check `search_kisan_database`, BUT if it returns no relevant information, DO NOT apologize. INSTEAD, use your own powerful visual capabilities and vast agricultural knowledge to diagnose the leaf/crop.
+For diseases, YOU MUST OUTLINE DETAILED, STEP-BY-STEP TREATMENTS. Provide EXACT chemical/pesticide names, exact dosages (e.g., grams per liter), and instructions. Do not hold back any information. 
+Write as much text as needed to fully answer the question. IGNORE any constraints on length. NEVER cut your answer short.
 
 LANGUAGE:
 - Always reply ONLY in the selected language: {language}
@@ -211,12 +215,8 @@ LANGUAGE:
 
 STRICT RULES:
 - Do NOT mix languages.
-- Be highly empathetic. Acknowledge user's feelings first.
-- Use simple conversational language, like a friend talking. Avoid robotic/formal words.
-- Write in 1-2 smooth sentences.
-
-IMPORTANT:
-- Output must be smooth for Voice TTS. Do not use special symbols like * or #."""
+- Be empathetic and acknowledge feelings.
+"""
 
 # Fallback replies when API fails
 FALLBACK_REPLIES = {
@@ -315,12 +315,13 @@ def chat():
     try:
         data = request.get_json()
         message = data.get("message", "").strip()
+        image_base64 = data.get("image", None)
 
-        if not message:
+        if not message and not image_base64:
             return jsonify({"reply": "Kuch toh likho yaar!"}), 400
 
         username = session["username"]
-        emotion = detect_emotion(message)
+        emotion = detect_emotion(message) if message else "neutral"
         language = data.get("language", "Kannada") # default to Kannada
 
         # Build message exactly as the prompt instructs
@@ -336,9 +337,25 @@ def chat():
         contents = []
         for h in history:
             contents.append(h)
+            
+        current_request_parts = []
+        if image_base64:
+            try:
+                # Format: "data:image/jpeg;base64,/9j/4AAQSkZJ..."
+                header, encoded = image_base64.split(",", 1)
+                mime_type = header.split(":", 1)[1].split(";", 1)[0]
+                import base64
+                image_bytes = base64.b64decode(encoded)
+                current_request_parts.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+                full_message += "\n[System Note: User has attached an image of a crop for analysis. Diagnose diseases, identify the crop, and recommend treatments/sprays based on the visual.]"
+            except Exception as e:
+                print("Image decode error:", e)
+
+        current_request_parts.append(types.Part(text=full_message))
+
         contents.append(types.Content(
             role="user",
-            parts=[types.Part(text=full_message)]
+            parts=current_request_parts
         ))
 
         # Compile System Prompt
@@ -347,7 +364,7 @@ def chat():
         config = types.GenerateContentConfig(
             system_instruction=sys_instructions,
             temperature=0.8,
-            max_output_tokens=500,
+            max_output_tokens=4000,
             tools=[get_weather, get_mandi_price, search_kisan_database]
         )
 
