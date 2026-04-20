@@ -11,3 +11,7 @@ chroma_db/
 venv/
 env/
 data/*.pdf
+
+# SQLite Database
+*.db
+*.sqlite3

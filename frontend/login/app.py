@@ -75,7 +75,7 @@ def index():
 def login():
     if request.method == "POST":
         # Get form data
-        data = request.get_json()
+        data = request.get_json(silent=True) or request.form
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
         
@@ -89,7 +89,6 @@ def login():
             session['logged_in'] = True
             
             # Create user folder if it doesn't exist
-            session["user"] = username
             ensure_user_folder(username)
             
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -123,7 +122,7 @@ def chat_api():
     if "user" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     
-    data = request.get_json()
+    data = request.get_json(silent=True) or request.form
     message = data.get("message", "")
     
     # Here you would typically process the chat message with your AI

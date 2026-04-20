@@ -8,6 +8,8 @@ from google import genai
 from google.genai import types
 import requests
 import json
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Load environment variables
 load_dotenv(override=True)
@@ -231,6 +233,25 @@ FALLBACK_REPLIES = {
 # In-memory chat history per user (list of Content dicts)
 chat_histories = {}
 
+def init_db():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            location TEXT,
+            mobile TEXT,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
 # Create Flask app
 app = Flask(__name__, static_folder="frontend", static_url_path="")
 
@@ -253,26 +274,20 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=2)
 )
 
-USERS = {"admin": "1234"}
-
-
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
-
 @app.route("/")
 def index():
     return app.send_static_file("index.html")
 
-
 @app.route("/check_auth", methods=["GET"])
 def check_auth():
-    if 'username' in session:
-        return jsonify({'authenticated': True, 'username': session['username']})
+    if 'email' in session or 'username' in session:
+        return jsonify({'authenticated': True, 'username': session.get('username', 'User')})
     return jsonify({'authenticated': False})
-
 
 @app.route("/login", methods=["POST", "OPTIONS"])
 def login():
@@ -281,16 +296,55 @@ def login():
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response
 
-    data = request.get_json()
-    username = data.get("username", "").strip()
+    data = request.get_json(silent=True) or request.form
+    email = data.get("email", "").strip()
     password = data.get("password", "").strip()
 
-    if username in USERS and USERS[username] == password:
-        session.permanent = True
-        session["username"] = username
-        return jsonify({"status": "success", "username": username})
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, password_hash FROM users WHERE email = ?", (email,))
+    user = c.fetchone()
+    conn.close()
 
-    return jsonify({"status": "error", "error": "Invalid username or password"}), 401
+    if user and check_password_hash(user[2], password):
+        session.permanent = True
+        session["username"] = user[1]
+        session["email"] = email
+        return jsonify({"status": "success", "username": user[1], "message": "Login successful"})
+
+    return jsonify({"status": "error", "error": "Invalid email or password"}), 401
+    
+@app.route("/api/register", methods=["POST", "OPTIONS"])
+def register():
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "preflight"})
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    data = request.get_json(silent=True) or request.form
+    name = data.get("name", "").strip()
+    location = data.get("location", "").strip()
+    mobile = data.get("mobile", "").strip()
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+
+    if not name or not email or not password:
+        return jsonify({"status": "error", "error": "Name, Email and Password are required"}), 400
+
+    hashed_password = generate_password_hash(password)
+
+    try:
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("INSERT INTO users (name, location, mobile, email, password_hash) VALUES (?, ?, ?, ?, ?)",
+                  (name, location, mobile, email, hashed_password))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success", "message": "Registration successful"})
+    except sqlite3.IntegrityError:
+        return jsonify({"status": "error", "error": "Email already exists! Please login instead."}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/logout", methods=["POST"])
@@ -313,7 +367,7 @@ def chat():
 
     data = None
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or request.form
         message = data.get("message", "").strip()
         image_base64 = data.get("image", None)
 
