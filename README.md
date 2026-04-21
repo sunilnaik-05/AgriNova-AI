@@ -1,262 +1,280 @@
-AgriNova AI
+# 🌱 AgriNova AI — Intelligent Agricultural Assistant
 
-AgriNova AI is a simple chatbot project designed to help users (especially farmers) get quick and easy answers. The idea behind this project is to make conversations feel natural, like talking to a real person instead of a robot.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python" />
+  <img src="https://img.shields.io/badge/Flask-3.0.3-black?style=for-the-badge&logo=flask" />
+  <img src="https://img.shields.io/badge/Gemini-2.5--Flash-orange?style=for-the-badge&logo=google" />
+  <img src="https://img.shields.io/badge/ChromaDB-RAG-purple?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" />
+</p>
 
-The chatbot supports both text and voice interaction and can respond in multiple languages.
-
-
-What this project does
-
-Sometimes, getting useful information quickly can be difficult, especially when language becomes a barrier. This project tries to solve that by:
-
-* Giving clear and simple answers
-* Supporting local languages like Kannada and Hindi
-* Allowing both text and voice input
-* Responding in a more human and friendly way
-
-
-Features
-
-* Text + Voice input
-* Voice output (Text-to-Speech)
-* Multi-language support (Kannada, Hindi, English)
-* Emotion-based responses
-* Simple and clean interface
-
-
-How to run
-
-1. Clone the repository
-
-```bash
-git clone https://github.com/sunilnaik4582-jpg/AgriNova-AI.git
-cd AgriNova-AI
-```
-
-2. Create a `.env` file
-
-```bash
-copy .env.example .env
-```
-
-3. Add your API key
-
-```text
-GEMINI_API_KEY=your_api_key_here
-```
-
-4. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-5. Run the project
-
-```bash
-python app.py
-```
-
-
-Project structure
-
-app.py
-frontend/
-test_api.py
-.env.example
-.gitignore
-README.md
-
-
-Note
-
-The `.env` file is not included in the repository for security reasons.
-You need to create it manually and add your own API key.
-
-
-Future improvements# AgriNova AI
-
-AgriNova AI is an intelligent agriculture assistant designed to provide real-time, context-aware, and human-like guidance to farmers. It leverages advanced AI techniques such as Agentic AI, Function Calling, and Retrieval-Augmented Generation (RAG) to deliver accurate and practical solutions.
-
-The chatbot supports both voice and text interaction and can communicate in multiple languages like Hindi, Kannada, and English, making it accessible to a wider range of users.
+**AgriNova AI** is a full-stack, production-ready agricultural AI chatbot built for Indian farmers. It uses Google Gemini 2.5-Flash as its brain, and delivers real-time weather updates, live mandi (market) prices, and expert crop advice — all through a beautiful, glassmorphism-styled web UI. Farmers can communicate in **Kannada, Hindi, or English**, use their **voice**, or even **upload crop images** for disease diagnosis.
 
 ---
 
-Features
+## ✨ Features
 
-* Natural conversational chatbot (human-like responses)
-* Voice input and voice output (Text-to-Speech)
-* Multi-language support (Hindi, Kannada, English)
-* Emotion-aware responses
-* Function calling (real-time weather and mandi data)
-* RAG-based knowledge system (expert agriculture data)
-* Farmer-friendly interface
+### 🤖 AI & Agentic Intelligence
+- **Gemini 2.5-Flash** — Latest Google LLM with multi-turn conversation memory
+- **Agentic Function Calling** — AI autonomously calls tools to fetch live data
+- **RAG (Retrieval-Augmented Generation)** — ChromaDB-powered local knowledge base using agriculture PDFs
+- **Multimodal Input** — Upload crop photos for visual disease diagnosis
+- **Emotion-Aware Responses** — Detects sad, angry, happy, stressed, confused states and responds empathetically
+
+### 🛠️ Real-Time Tools (Agent Actions)
+| Tool | Description |
+|------|-------------|
+| `get_weather` | Live weather data via Open-Meteo API (temperature, humidity, wind, rain %, feels-like) — supports even small Indian villages |
+| `get_mandi_price` | Crop market prices (Gehu, Chawal, Soyabean, Pyaj, Sarso, etc.) |
+| `search_kisan_database` | Searches local ChromaDB vector store for expert agricultural answers |
+
+### 🗣️ Voice & Language
+- **Voice Input** — Web Speech API (speech-to-text)
+- **Text-to-Speech (TTS)** — Reads bot replies aloud with emotion-based pitch/rate adjustment
+- **Multi-language** — Kannada, Hindi, English (switchable in UI)
+
+### 🔐 Authentication System
+- **Secure Registration & Login** using email + hashed passwords (Werkzeug)
+- SQLite `users.db` stores: Name, Location, Mobile, Email, Password Hash, Registration Date
+- Session-based auth with 2-hour expiry
+- Forgot Password UI (on login page)
+- Glassmorphism login/register page with typewriter animation
+
+### 💬 Chat Interface
+- Sidebar with **Chat History** (localStorage, up to 20 sessions)
+- **Rename** and **Delete** chat sessions
+- **Inline Edit** user messages + re-send
+- **Copy** button on user messages
+- **Per-message TTS Play/Stop** button on bot replies
+- Typing indicator (animated dots)
+- Image attachment preview before sending
+- Responsive design (mobile-friendly sidebar toggle)
 
 ---
 
-Advanced AI Capabilities
+## 🏗️ Project Structure
 
-* Agentic AI workflow for multi-step reasoning and decision-making
-* Function calling to fetch real-time external data (weather, market prices)
-* Retrieval-Augmented Generation (RAG) using agriculture documents
-* Context-aware and intent-aware conversation handling
-
----
-
-Tech Stack
-
-* Backend: Python
-* Frontend: HTML, CSS, JavaScript
-* LLM: Gemini API
-* Vector Database: ChromaDB
-* Speech: Text-to-Speech (TTS)
-* Embeddings: Used for RAG pipeline
-
----
-
-Architecture
-
-User Input → LLM →
-(Function Call: Weather / Mandi)
-(RAG: Knowledge Retrieval)
-→ Response Generation → Voice Output
-
----
-
-Project Structure
-
-AgriNova-AI/
-
-├── app.py
-├── build_db.py
-├── requirements.txt
+```
+chatbot-project/
+│
+├── app.py                   # Main Flask backend (API, Auth, Gemini, Function Calling)
+├── build_db.py              # Script to build ChromaDB vector knowledge base from PDFs/TXT
+├── view_users.py            # Utility to view registered users from SQLite DB
+├── requirements.txt         # Python dependencies
+│
 ├── frontend/
-├── data/ (PDFs for RAG, not included)
-├── chroma_db/ (auto-generated, ignored)
-├── test_agent.py
-├── .env.example
-├── .gitignore
-└── README.md
-
-Environment Variables
-
-The `.env` file is not included in this repository for security reasons. It may contain sensitive information such as API keys.
-
-After cloning the project, you need to create a `.env` file in the root directory and add your API key:
-
-GEMINI_API_KEY=your_api_key_here
-
-Make sure not to share or upload your `.env` file to GitHub.
-
----
-
-.gitignore
-
-This project uses a `.gitignore` file to prevent sensitive and unnecessary files from being uploaded to the repository.
-
-The following files and folders are ignored:
-
-* `.env` – Contains API keys and secrets
-* `chroma_db/` – Auto-generated vector database (can be recreated)
-* `data/*.pdf` – External knowledge files (large and optional)
-* `__pycache__/`, `*.pyc` – Python cache files
-* `venv/`, `env/` – Virtual environment folders
-* `server.log` – Log files
-* `.ipynb_checkpoints/` – Jupyter notebook auto-saves
-
-These files are excluded to keep the repository secure, lightweight, and easy to manage.
+│   ├── index.html           # Main chat UI (sidebar, chat area, voice, image upload)
+│   ├── login.html           # Standalone login/register page (glassmorphism design)
+│   └── style.css            # Full CSS (dark theme, glassmorphism, animations)
+│   └── login/
+│       ├── app.py           # Older standalone login Flask app (legacy/demo)
+│       ├── templates/       # Jinja2 templates for login app
+│       └── uploads/         # User file uploads (for login app)
+│
+├── data/
+│   ├── kisan_schemes.txt    # Sample knowledge base: PM-KISAN, crop diseases
+│   ├── NFSM12102018.pdf     # Agriculture scheme PDF (for RAG)
+│   └── download.pdf         # Additional agriculture document (for RAG)
+│
+├── chroma_db/               # Auto-generated ChromaDB vector store (gitignored)
+├── users.db                 # SQLite user database (gitignored)
+│
+├── test_agent.py            # Test script for Gemini agent/function calling
+├── test_api.py              # Test script for Flask API endpoints
+├── test_weather.py          # Test script for weather API integration
+│
+├── .env                     # API keys (gitignored — create manually)
+├── .env.example             # Template for .env file
+├── .gitignore               # Ignores .env, db files, logs, chroma_db, PDFs
+└── README.md                # This file
+```
 
 ---
 
-Setup Notes
+## 🧠 Architecture
 
-If the project does not run correctly, make sure you have:
+```
+                        ┌─────────────────────────────────┐
+                        │         User (Browser)           │
+                        │  Text / Voice / Image Input      │
+                        └──────────────┬──────────────────┘
+                                       │ HTTPS
+                        ┌──────────────▼──────────────────┐
+                        │         Flask Backend            │
+                        │         (app.py @ :5000)         │
+                        │                                  │
+                        │  ┌─────────────────────────┐    │
+                        │  │   Auth (SQLite + Session)│    │
+                        │  └─────────────────────────┘    │
+                        │                                  │
+                        │  ┌─────────────────────────┐    │
+                        │  │  Gemini 2.5-Flash (LLM) │    │
+                        │  │  + Function Calling      │    │
+                        │  └────────────┬────────────┘    │
+                        │               │                  │
+                        │   ┌───────────┼───────────┐     │
+                        │   ▼           ▼           ▼     │
+                        │ Weather    Mandi       ChromaDB  │
+                        │  API       Price         RAG     │
+                        │(Open-Meteo)(Local)  (PDF/TXT KB) │
+                        └──────────────────────────────────┘
+```
 
-* Created the `.env` file with your API key
-* Added required PDF files inside the `data/` folder
-* Built the vector database using:
+---
 
-python build_db.py
+## ⚡ Quick Start
 
-
-## How to Run
-
-1. Clone the repository
-
+### 1. Clone the Repository
+```bash
 git clone https://github.com/sunilnaik4582-jpg/AgriNova-AI.git
 cd AgriNova-AI
+```
 
-2. Create a .env file
+### 2. Create Virtual Environment (Recommended)
+```bash
+python -m venv venv
+venv\Scripts\activate      # Windows
+# source venv/bin/activate # Linux/macOS
+```
 
-copy .env.example .env
-
-Add your API key:
-GEMINI_API_KEY=your_api_key_here
-
----
-
- 3. Install dependencies
-
+### 3. Install Dependencies
+```bash
 pip install -r requirements.txt
+```
 
----
+### 4. Set Up API Key
+```bash
+copy .env.example .env
+```
+Then open `.env` and add your Gemini API key:
+```
+GEMINI_API_KEY=your_google_gemini_api_key_here
+```
+> Get your free key at: https://aistudio.google.com/app/apikey
 
- 4. Add knowledge base (RAG)
-
-* Download agriculture PDFs (crop guides, disease management, schemes)
-* Place them inside the `data/` folder
-
----
-
-5. Build vector database
-
+### 5. Add Knowledge Base (Optional — for RAG)
+Place agriculture PDFs or `.txt` files inside the `data/` folder, then run:
+```bash
 python build_db.py
+```
+This will chunk the documents and build a ChromaDB vector store at `./chroma_db/`.
 
----
-
-6. Run the application
-
+### 6. Run the Application
+```bash
 python app.py
+```
+Open your browser and go to: **http://127.0.0.1:5000**
 
 ---
 
-Important Notes
+## 🔑 API Endpoints
 
-* Do not upload your `.env` file
-* `chroma_db/` will be generated automatically
-* Add your own PDFs inside `data/` for RAG functionality
-
----
-
-Future Improvements
-
-* Integration with real-time government mandi APIs
-* Image-based crop disease detection
-* Personalized farmer memory system
-* Mobile-friendly interface
-* Offline support for rural areas
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Serves main chat UI |
+| `GET` | `/login.html` | Serves login/register page |
+| `GET` | `/check_auth` | Check if user is logged in |
+| `POST` | `/login` | User login (email + password) |
+| `POST` | `/api/register` | New user registration |
+| `POST` | `/logout` | Logout and clear session |
+| `POST` | `/api/chat` | Send message to AI (supports image) |
+| `POST` | `/api/clear_chat` | Clear current chat history |
 
 ---
 
-Why this project matters
+## 🌐 Language Support
 
-This project demonstrates real-world application of modern AI techniques such as RAG, function calling, and conversational AI design in the agriculture domain. It focuses on making AI accessible, practical, and useful for farmers.
+| Language | Voice Input | TTS Output | UI |
+|----------|-------------|------------|----|
+| Kannada (ಕನ್ನಡ) | ✅ | ✅ (kn-IN) | ✅ |
+| Hindi (हिंदी) | ✅ | ✅ (hi-IN) | ✅ |
+| English | ✅ | ✅ (en-IN) | ✅ |
 
 ---
 
-Contribution
+## 🖼️ Image-Based Crop Diagnosis
 
-Contributions are welcome. Feel free to fork the repository and submit a pull request.
+Farmers can click the 📷 icon to attach a crop leaf photo. The AI (Gemini Vision) will:
+1. Identify the crop and visible disease
+2. Provide step-by-step treatment recommendations
+3. Suggest exact pesticide names and dosages
 
+---
 
-* Better voice quality
-* More local languages
-* Mobile-friendly version
-* Smarter emotion detection
+## 🛡️ Security
 
+- Passwords are hashed using **Werkzeug's** `generate_password_hash` (PBKDF2-SHA256)
+- `.env` file is **gitignored** — API key never pushed to GitHub
+- Session cookies: `HttpOnly`, `SameSite=Lax`, 2-hour expiry
+- User database (`.db`) is gitignored
 
-Final note
+---
 
-This project is built as a practical experiment to make AI more accessible and human-like.
-If you have ideas or want to improve it, feel free to contribute.
+## 📦 Dependencies
 
+```
+flask==3.0.3
+google-genai==0.6.0
+python-dotenv==1.0.1
+requests==2.32.3
+chromadb==0.6.0
+PyPDF2==3.0.1
+```
+> Note: `flask-cors` and `werkzeug` are installed automatically as Flask dependencies.
+
+---
+
+## 🧪 Testing Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `test_agent.py` | Tests Gemini agentic function calling end-to-end |
+| `test_api.py` | Tests Flask API (login, chat, auth endpoints) |
+| `test_weather.py` | Tests the weather tool with various Indian locations |
+| `view_users.py` | Prints all registered users from SQLite DB |
+
+---
+
+## 🚀 Future Improvements
+
+- [ ] Integration with official government Mandi API (Agmarknet / eNAM)
+- [ ] Personalized farmer memory (remember past crops, location)
+- [ ] Offline mode / PWA support for rural areas with poor connectivity
+- [ ] More Indian languages (Tamil, Telugu, Marathi, Gujarati)
+- [ ] Smarter emotion detection using NLP (beyond keyword matching)
+- [ ] Push notification for weather alerts
+- [ ] Crop calendar and planting schedule recommendations
+- [ ] Admin dashboard for user management
+
+---
+
+## 💡 Why AgriNova AI?
+
+India has over **140 million farming households**. Most do not have access to quick, reliable agricultural advice in their local language. AgriNova AI bridges that gap by combining:
+- 🧠 State-of-the-art LLM (Gemini 2.5-Flash)
+- 📚 Local expert knowledge (RAG from PDFs)
+- 🌦️ Real-time data (weather + mandi prices)
+- 🗣️ Voice in local languages
+- ❤️ Empathy-driven conversation design
+
+---
+
+## 🤝 Contribution
+
+Contributions are welcome! Feel free to:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes
+4. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is open-source under the [MIT License](LICENSE).
+
+---
+
+<p align="center">
+  Built with ❤️ for Indian Farmers &nbsp;|&nbsp; Powered by Google Gemini &nbsp;|&nbsp; AgriNova AI
+</p>
