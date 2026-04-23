@@ -12,6 +12,31 @@
 
 ---
 
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="screenshots/login_page.png" alt="AgriNova AI Login Page" width="100%" />
+      <br/>
+      <b>🔐 Login Page</b>
+      <br/>
+      <sub>Glassmorphism dark-themed secure login with typewriter animation</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="screenshots/chat_interface.png" alt="AgriNova AI Chat Interface" width="100%" />
+      <br/>
+      <b>💬 Chat Interface</b>
+      <br/>
+      <sub>Multilingual AI chat with crop disease diagnosis via image upload</sub>
+    </td>
+  </tr>
+</table>
+
+> 📌 **Live Demo Features Shown:** Kannada language support, image-based crop disease diagnosis (Late Blight detection), emotion-aware responses, and sidebar chat history.
+
+---
+
 ## ✨ Features
 
 ### 🤖 AI & Agentic Intelligence
