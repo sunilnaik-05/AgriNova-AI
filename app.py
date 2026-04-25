@@ -247,6 +247,23 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Run migrations for new profile fields
+    new_columns = [
+        ("profile_image", "TEXT"),
+        ("farm_size", "TEXT"),
+        ("crops_grown", "TEXT"),
+        ("soil_type", "TEXT"),
+        ("default_language", "TEXT DEFAULT 'Kannada'")
+    ]
+    
+    for col_name, col_type in new_columns:
+        try:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+            
     conn.commit()
     conn.close()
 
@@ -286,7 +303,22 @@ def index():
 @app.route("/check_auth", methods=["GET"])
 def check_auth():
     if 'email' in session or 'username' in session:
-        return jsonify({'authenticated': True, 'username': session.get('username', 'User')})
+        email = session.get('email')
+        profile_image = None
+        if email:
+            conn = sqlite3.connect('users.db')
+            c = conn.cursor()
+            c.execute("SELECT profile_image FROM users WHERE email = ?", (email,))
+            user = c.fetchone()
+            if user:
+                profile_image = user[0]
+            conn.close()
+            
+        return jsonify({
+            'authenticated': True, 
+            'username': session.get('username', 'User'),
+            'profile_image': profile_image
+        })
     return jsonify({'authenticated': False})
 
 @app.route("/login", methods=["POST", "OPTIONS"])
@@ -302,7 +334,7 @@ def login():
 
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
-    c.execute("SELECT id, name, password_hash FROM users WHERE email = ?", (email,))
+    c.execute("SELECT id, name, password_hash, profile_image FROM users WHERE email = ?", (email,))
     user = c.fetchone()
     conn.close()
 
@@ -310,7 +342,12 @@ def login():
         session.permanent = True
         session["username"] = user[1]
         session["email"] = email
-        return jsonify({"status": "success", "username": user[1], "message": "Login successful"})
+        return jsonify({
+            "status": "success", 
+            "username": user[1], 
+            "profile_image": user[3],
+            "message": "Login successful"
+        })
 
     return jsonify({"status": "error", "error": "Invalid email or password"}), 401
     
@@ -347,6 +384,88 @@ def register():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
+@app.route("/api/profile", methods=["GET"])
+def get_profile():
+    if "email" not in session:
+        return jsonify({"status": "error", "error": "Not authenticated"}), 401
+    
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT name, email, mobile, location, profile_image, farm_size, crops_grown, soil_type, default_language 
+        FROM users WHERE email = ?
+    """, (session["email"],))
+    user = c.fetchone()
+    conn.close()
+    
+    if user:
+        return jsonify({
+            "status": "success",
+            "profile": {
+                "name": user[0],
+                "email": user[1],
+                "mobile": user[2],
+                "location": user[3],
+                "profile_image": user[4],
+                "farm_size": user[5],
+                "crops_grown": user[6],
+                "soil_type": user[7],
+                "default_language": user[8] or "Kannada"
+            }
+        })
+    return jsonify({"status": "error", "error": "User not found"}), 404
+
+@app.route("/api/update_profile", methods=["POST", "OPTIONS"])
+def update_profile():
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "preflight"})
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    if "email" not in session:
+        return jsonify({"status": "error", "error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True) or request.form
+    name = data.get("name", "").strip()
+    mobile = data.get("mobile", "").strip()
+    location = data.get("location", "").strip()
+    password = data.get("password", "").strip()
+    profile_image = data.get("profile_image", "")
+    farm_size = data.get("farm_size", "").strip()
+    crops_grown = data.get("crops_grown", "").strip()
+    soil_type = data.get("soil_type", "").strip()
+    default_language = data.get("default_language", "Kannada").strip()
+
+    email = session["email"]
+    
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    
+    try:
+        if password:
+            hashed_password = generate_password_hash(password)
+            c.execute("""
+                UPDATE users SET 
+                    name = ?, mobile = ?, location = ?, profile_image = ?, 
+                    farm_size = ?, crops_grown = ?, soil_type = ?, default_language = ?, password_hash = ?
+                WHERE email = ?
+            """, (name, mobile, location, profile_image, farm_size, crops_grown, soil_type, default_language, hashed_password, email))
+        else:
+            c.execute("""
+                UPDATE users SET 
+                    name = ?, mobile = ?, location = ?, profile_image = ?, 
+                    farm_size = ?, crops_grown = ?, soil_type = ?, default_language = ?
+                WHERE email = ?
+            """, (name, mobile, location, profile_image, farm_size, crops_grown, soil_type, default_language, email))
+        
+        conn.commit()
+        session["username"] = name # Update session if name changed
+        return jsonify({"status": "success", "message": "Profile updated successfully"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+    finally:
+        conn.close()
+
 @app.route("/logout", methods=["POST"])
 def logout():
     username = session.pop('username', None)
@@ -375,11 +494,24 @@ def chat():
             return jsonify({"reply": "Kuch toh likho yaar!"}), 400
 
         username = session["username"]
+        email = session.get("email")
         emotion = detect_emotion(message) if message else "neutral"
         language = data.get("language", "Kannada") # default to Kannada
+        
+        user_context = ""
+        if email:
+            conn = sqlite3.connect('users.db')
+            c = conn.cursor()
+            c.execute("SELECT location, farm_size, crops_grown, soil_type FROM users WHERE email = ?", (email,))
+            u = c.fetchone()
+            if u:
+                loc, fsize, crops, soil = u
+                if any([loc, fsize, crops, soil]):
+                    user_context = f"\n[User Profile Context: Location: {loc or 'N/A'}, Farm Size: {fsize or 'N/A'}, Crops Grown: {crops or 'N/A'}, Soil Type: {soil or 'N/A'} - Use this context to provide hyper-personalized advice.]"
+            conn.close()
 
         # Build message exactly as the prompt instructs
-        full_message = f"Selected language: {language}\nUser emotion: {emotion}\nUser message: {message}".strip()
+        full_message = f"Selected language: {language}\nUser emotion: {emotion}\nUser message: {message}{user_context}".strip()
 
         # Get or init history
         if username not in chat_histories:
@@ -516,6 +648,76 @@ def chat():
         return jsonify({"reply": reply, "emotion": emotion, "mode": "fallback"})
 
 
+
+@app.route("/api/weather_dashboard", methods=["GET"])
+def weather_dashboard():
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+    lang = request.args.get('lang', 'Hindi')
+    
+    if not lat or not lon:
+        return jsonify({"error": "Location coordinates required."}), 400
+        
+    try:
+        # Reverse Geocode to get location name
+        location_name = "Unknown Location"
+        try:
+            rg_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=en"
+            rg_data = requests.get(rg_url, timeout=5).json()
+            location_name = rg_data.get("city") or rg_data.get("locality") or rg_data.get("principalSubdivision") or "Your Location"
+        except Exception as e:
+            print("Reverse geocode error:", e)
+
+        # Fetch 7-day daily forecast from Open-Meteo
+        weather_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&current_weather=true"
+            f"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode"
+            f"&timezone=Asia%2FKolkata"
+        )
+        w_data = requests.get(weather_url, timeout=8).json()
+        
+        if "current_weather" not in w_data:
+            return jsonify({"error": "Weather data unavailable."}), 500
+            
+        current = w_data["current_weather"]
+        daily = w_data.get("daily", {})
+        
+        # Build 7-day data structure
+        forecast = []
+        if "time" in daily:
+            for i in range(len(daily["time"])):
+                forecast.append({
+                    "date": daily["time"][i],
+                    "temp_max": daily["temperature_2m_max"][i],
+                    "temp_min": daily["temperature_2m_min"][i],
+                    "rain_chance": daily["precipitation_probability_max"][i],
+                    "code": daily["weathercode"][i]
+                })
+        
+        # Prepare data for AI summary
+        summary_prompt = (
+            f"You are an agricultural AI. Write exactly 2 simple sentences in {lang} about the upcoming 7-day weather for a farmer. "
+            f"Here is the daily forecast data: {json.dumps(forecast)}. "
+            f"Tell them if rain is expected, and how the temperature will be. Do NOT use markdown or complex words. Keep it very conversational."
+        )
+        
+        summary_res = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[summary_prompt],
+        )
+        ai_summary = summary_res.text.strip()
+        
+        return jsonify({
+            "current": current,
+            "forecast": forecast,
+            "summary": ai_summary,
+            "location_name": location_name
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/clear_chat", methods=["POST"])
 def clear_chat():

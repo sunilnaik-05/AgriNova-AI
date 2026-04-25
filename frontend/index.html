@@ -7,6 +7,16 @@
     <title>AgriNova-AI</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href='style.css' rel='stylesheet'>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none !important;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none !important;
+            scrollbar-width: none !important;
+        }
+    </style>
 </head>
 
 <body>
@@ -49,7 +59,9 @@
                 <option value="Hindi">Hindi</option>
                 <option value="English">English</option>
             </select>
-            <span class="emotion-badge" style="margin-left:0;">Emotion-Aware AI</span>
+            <button id="weatherBadgeBtn" class="weather-badge" style="margin-left:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white; border-radius:20px; padding:0.4rem 1rem; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; gap:0.5rem; transition:all 0.3s;">
+                <span>⛅</span> <span>Weather</span>
+            </button>
         </div>
 
         <div class="chat-container" id="chatArea">
@@ -67,8 +79,12 @@
             <div class="input-wrapper">
                 <textarea id="userInput" placeholder="Kuch bhi pucho... main samjhunga 😊" rows="1"></textarea>
                 <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
                 <button class="voice-btn image-upload-btn" id="imageUploadBtn" title="Upload image">
                     <i class="fas fa-image"></i>
+                </button>
+                <button class="voice-btn camera-upload-btn" id="cameraUploadBtn" title="Take photo">
+                    <i class="fas fa-camera"></i>
                 </button>
                 <button class="voice-btn" id="voiceButton" title="Voice input">
                     <i class="fas fa-microphone"></i>
@@ -80,8 +96,8 @@
         </div>
     </div>
 
-    <!-- Login Modal -->
-    <div id="loginModal" class="login-modal">
+    <!-- Login Modal (Kept for fallback/legacy) -->
+    <div id="loginModal" class="login-modal hidden">
         <!-- Floating particles inside modal overlay -->
         <div class="lm-particles" id="lmParticles"></div>
 
@@ -158,6 +174,157 @@
         </div>
     </div>
 
+    <!-- Profile Modal -->
+    <div id="profileModal" class="login-modal hidden" style="z-index: 1001;">
+        <div class="login-card hide-scrollbar" style="max-height: 90vh; overflow-y: auto; padding: 2rem;">
+            <div class="lc-heading" style="margin-bottom: 1.5rem; text-align: left; display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="lc-title" style="font-size: 1.5rem;">User Profile 🧑‍🌾</div>
+                    <div class="lc-subtitle">Manage your details & farm context</div>
+                </div>
+                <button id="closeProfileBtn" style="background: none; border: none; color: #9ca3af; font-size: 1.5rem; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="profileForm" autocomplete="off">
+                <!-- DP -->
+                <div style="text-align: center; margin-bottom: 1.5rem;">
+                    <div class="user-avatar" id="profileModalAvatar" style="width: 80px; height: 80px; font-size: 2.5rem; margin: 0 auto 10px; overflow: hidden; position: relative; cursor: pointer;">
+                        <span id="profileModalAvatarText">U</span>
+                        <img id="profileModalAvatarImg" src="" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); font-size: 0.7rem; padding: 4px 0; color: white;">Edit</div>
+                    </div>
+                    <input type="file" id="profileImageInput" accept="image/*" style="display: none;">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="lc-field">
+                        <label class="lc-label">Name</label>
+                        <div class="lc-input-wrap">
+                            <span class="lc-icon">👤</span>
+                            <input type="text" id="profName" class="lc-input" required>
+                        </div>
+                    </div>
+                    <div class="lc-field">
+                        <label class="lc-label">Mobile</label>
+                        <div class="lc-input-wrap">
+                            <span class="lc-icon">📱</span>
+                            <input type="text" id="profMobile" class="lc-input">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lc-field" style="margin-top: 1rem;">
+                    <label class="lc-label">Location / Village</label>
+                    <div class="lc-input-wrap">
+                        <span class="lc-icon">📍</span>
+                        <input type="text" id="profLocation" class="lc-input" placeholder="e.g. Haveri, Karnataka">
+                    </div>
+                </div>
+                
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 1.5rem 0;">
+                <div style="color: var(--primary-hover); font-weight: 600; margin-bottom: 1rem; font-size: 0.95rem;">🌱 Farm Context (For better AI advice)</div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="lc-field">
+                        <label class="lc-label">Farm Size</label>
+                        <div class="lc-input-wrap">
+                            <span class="lc-icon">🚜</span>
+                            <input type="text" id="profFarmSize" class="lc-input" placeholder="e.g. 5 Acres">
+                        </div>
+                    </div>
+                    <div class="lc-field">
+                        <label class="lc-label">Soil Type</label>
+                        <div class="lc-input-wrap">
+                            <span class="lc-icon">🟤</span>
+                            <input type="text" id="profSoilType" class="lc-input" placeholder="e.g. Black Cotton">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lc-field" style="margin-top: 1rem;">
+                    <label class="lc-label">Crops Grown</label>
+                    <div class="lc-input-wrap">
+                        <span class="lc-icon">🌾</span>
+                        <input type="text" id="profCrops" class="lc-input" placeholder="e.g. Wheat, Rice, Sugarcane">
+                    </div>
+                </div>
+
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 1.5rem 0;">
+
+                <div class="lc-field">
+                    <label class="lc-label">Change Password (Optional)</label>
+                    <div class="lc-input-wrap">
+                        <span class="lc-icon">🔒</span>
+                        <input type="password" id="profPassword" class="lc-input" placeholder="Leave blank to keep current">
+                    </div>
+                </div>
+
+                <div class="error-message" id="profileError" style="margin-top: 10px;"></div>
+                <div class="success-message" id="profileSuccess" style="color: #4ade80; font-size: 0.85rem; margin-top: 5px; text-align: center;"></div>
+
+                <button type="submit" class="lc-btn" id="saveProfileBtn" style="margin-top: 1.5rem;">
+                    <span class="lc-btn-text"><span>💾</span><span>Save Profile</span></span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Weather Modal -->
+    <div id="weatherModal" class="login-modal hidden" style="z-index: 1002;">
+        <div class="login-card hide-scrollbar" style="max-height: 90vh; overflow-y: auto; padding: 2rem; width: 500px; max-width: 95%;">
+            <div class="lc-heading" style="margin-bottom: 1.5rem; text-align: left; display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="lc-title" style="font-size: 1.5rem;">Agri Weather 🌤️</div>
+                    <div class="lc-subtitle" id="weatherLocationText">Fetching location...</div>
+                </div>
+                <button id="closeWeatherBtn" style="background: none; border: none; color: #9ca3af; font-size: 1.5rem; cursor: pointer;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- AI Summary Box -->
+            <div style="background: rgba(157, 78, 221, 0.15); border: 1px solid rgba(157, 78, 221, 0.3); border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem;">
+                <div style="font-weight: 600; color: #c77dff; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                    <i class="fas fa-robot"></i> AI Weather Summary
+                </div>
+                <div id="weatherAiSummary" style="font-size: 0.95rem; line-height: 1.5; color: white;">
+                    Loading weather predictions...
+                </div>
+            </div>
+
+            <!-- Current Weather Overview -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; padding: 0 1rem;">
+                <div style="text-align: center;">
+                    <div id="weatherCurrentIcon" style="font-size: 3.5rem; margin-bottom: 0.5rem;">⛅</div>
+                    <div id="weatherCurrentCondition" style="font-size: 0.9rem; color: var(--text-muted);">Mostly Cloudy</div>
+                </div>
+                <div style="text-align: center;">
+                    <div id="weatherCurrentTemp" style="font-size: 3rem; font-weight: bold; color: white; line-height: 1;">--°</div>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div style="margin-bottom: 1.5rem;">
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">7-Day Temperature Forecast</div>
+                <div style="background: rgba(0,0,0,0.2); border-radius: 12px; padding: 1rem;">
+                    <canvas id="weatherChart" height="150"></canvas>
+                </div>
+            </div>
+
+            <!-- Daily Forecast List -->
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Daily Rain Probability</div>
+                <div id="weatherDailyList" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <!-- List items generated by JS -->
+                </div>
+            </div>
+            
+            <div id="weatherErrorMsg" style="color: #ef4444; margin-top: 1rem; text-align: center; font-size: 0.9rem;"></div>
+        </div>
+    </div>
+
     <script>
         // ─── DOM Elements ───────────────────────────────────────────────
         const loginModal = document.getElementById('loginModal');
@@ -176,10 +343,39 @@
         const voiceButton = document.getElementById('voiceButton');
         const logoutBtn = document.getElementById('logoutBtn');
         const imageInput = document.getElementById('imageInput');
+        const cameraInput = document.getElementById('cameraInput');
         const imageUploadBtn = document.getElementById('imageUploadBtn');
+        const cameraUploadBtn = document.getElementById('cameraUploadBtn');
         const imagePreviewContainer = document.getElementById('imagePreviewContainer');
         const imagePreview = document.getElementById('imagePreview');
         const clearImageBtn = document.getElementById('clearImageBtn');
+
+        // Profile DOM Elements
+        const profileModal = document.getElementById('profileModal');
+        const userProfile = document.getElementById('userProfile');
+        const closeProfileBtn = document.getElementById('closeProfileBtn');
+        const profileForm = document.getElementById('profileForm');
+        const profileError = document.getElementById('profileError');
+        const profileSuccess = document.getElementById('profileSuccess');
+        const profileImageInput = document.getElementById('profileImageInput');
+        const profileModalAvatar = document.getElementById('profileModalAvatar');
+        const profileModalAvatarText = document.getElementById('profileModalAvatarText');
+        const profileModalAvatarImg = document.getElementById('profileModalAvatarImg');
+        const saveProfileBtn = document.getElementById('saveProfileBtn');
+        let currentProfileImageBase64 = null;
+
+        // Weather DOM Elements
+        const weatherBadgeBtn = document.getElementById('weatherBadgeBtn');
+        const weatherModal = document.getElementById('weatherModal');
+        const closeWeatherBtn = document.getElementById('closeWeatherBtn');
+        const weatherAiSummary = document.getElementById('weatherAiSummary');
+        const weatherCurrentTemp = document.getElementById('weatherCurrentTemp');
+        const weatherCurrentIcon = document.getElementById('weatherCurrentIcon');
+        const weatherCurrentCondition = document.getElementById('weatherCurrentCondition');
+        const weatherLocationText = document.getElementById('weatherLocationText');
+        const weatherDailyList = document.getElementById('weatherDailyList');
+        const weatherErrorMsg = document.getElementById('weatherErrorMsg');
+        let weatherChartInstance = null;
 
         let isWaiting = false;
         let selectedImageBase64 = null;
@@ -198,9 +394,13 @@
             loginError.textContent = '';
         }
 
-        function setUser(username) {
+        function setUser(username, profileImage = null) {
             usernameDisplay.textContent = username;
-            userAvatar.textContent = username.charAt(0).toUpperCase();
+            if (profileImage) {
+                userAvatar.innerHTML = `<img src="${profileImage}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+            } else {
+                userAvatar.innerHTML = username.charAt(0).toUpperCase();
+            }
         }
 
         async function checkAuthStatus() {
@@ -212,7 +412,7 @@
                 const data = await response.json();
                 if (data.authenticated) {
                     hideLogin();
-                    setUser(data.username);
+                    setUser(data.username, data.profile_image);
                     addMessage('bot', `Heyyy ${data.username}! 👋 Main AgriNova-AI hun — tumhara emotion-aware dost. Kya chal raha hai aaj? Batao kuch bhi! 😊`);
                 } else {
                     showLogin();
@@ -241,7 +441,7 @@
 
                 if (response.ok && data.status === 'success') {
                     hideLogin();
-                    setUser(data.username);
+                    setUser(data.username, data.profile_image);
                     chatArea.innerHTML = '';
                     addMessage('bot', `Heyyy ${data.username} Swagat hai AgriNova-AI mein! Main tumhara emotion-aware AI dost hun. Batao — aaj kaisa feel ho raha hai? 😊`);
                 } else {
@@ -258,9 +458,273 @@
             } catch (e) { }
             chatArea.innerHTML = '';
             usernameDisplay.textContent = 'User';
-            userAvatar.textContent = 'U';
+            userAvatar.innerHTML = 'U';
             showLogin();
         }
+
+        // ─── Profile Functions ───────────────────────────────────────────
+        userProfile.addEventListener('click', async () => {
+            profileModal.classList.remove('hidden');
+            profileError.textContent = '';
+            profileSuccess.textContent = '';
+            
+            // Fetch profile data
+            try {
+                const response = await fetch('/api/profile', { credentials: 'include' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    const p = data.profile;
+                    document.getElementById('profName').value = p.name || '';
+                    document.getElementById('profMobile').value = p.mobile || '';
+                    document.getElementById('profLocation').value = p.location || '';
+                    document.getElementById('profFarmSize').value = p.farm_size || '';
+                    document.getElementById('profCrops').value = p.crops_grown || '';
+                    document.getElementById('profSoilType').value = p.soil_type || '';
+                    
+                    if (p.profile_image) {
+                        currentProfileImageBase64 = p.profile_image;
+                        profileModalAvatarImg.src = p.profile_image;
+                        profileModalAvatarImg.style.display = 'block';
+                        profileModalAvatarText.style.display = 'none';
+                    } else {
+                        profileModalAvatarText.textContent = (p.name || 'U').charAt(0).toUpperCase();
+                        profileModalAvatarImg.style.display = 'none';
+                        profileModalAvatarText.style.display = 'block';
+                    }
+                }
+            } catch (e) {
+                profileError.textContent = 'Failed to load profile details.';
+            }
+        });
+
+        closeProfileBtn.addEventListener('click', () => {
+            profileModal.classList.add('hidden');
+        });
+
+        profileModalAvatar.addEventListener('click', () => {
+            profileImageInput.click();
+        });
+
+        profileImageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+                alert("Profile image size should be less than 2MB!");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                currentProfileImageBase64 = ev.target.result;
+                profileModalAvatarImg.src = currentProfileImageBase64;
+                profileModalAvatarImg.style.display = 'block';
+                profileModalAvatarText.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        });
+
+        profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            profileError.textContent = '';
+            profileSuccess.textContent = '';
+            
+            const payload = {
+                name: document.getElementById('profName').value,
+                mobile: document.getElementById('profMobile').value,
+                location: document.getElementById('profLocation').value,
+                farm_size: document.getElementById('profFarmSize').value,
+                crops_grown: document.getElementById('profCrops').value,
+                soil_type: document.getElementById('profSoilType').value,
+                password: document.getElementById('profPassword').value,
+                profile_image: currentProfileImageBase64 || ''
+            };
+
+            const btnTextSpan = saveProfileBtn.querySelector('.lc-btn-text');
+            const originalText = btnTextSpan.innerHTML;
+            btnTextSpan.innerHTML = '<span>⏳</span><span>Saving...</span>';
+            saveProfileBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/update_profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (response.ok && data.status === 'success') {
+                    profileSuccess.textContent = data.message;
+                    document.getElementById('profPassword').value = '';
+                    setUser(payload.name, payload.profile_image);
+                    setTimeout(() => profileModal.classList.add('hidden'), 1500);
+                } else {
+                    profileError.textContent = data.error || 'Failed to update profile.';
+                }
+            } catch (err) {
+                profileError.textContent = 'Connection error. Please try again.';
+            } finally {
+                btnTextSpan.innerHTML = originalText;
+                saveProfileBtn.disabled = false;
+            }
+        });
+
+        // ─── Weather Dashboard Functions ─────────────────────────────────
+        const WMO_ICONS = {
+            0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+            45: "🌫️", 48: "🌫️",
+            51: "🌧️", 53: "🌧️", 55: "🌧️",
+            61: "🌧️", 63: "🌧️", 65: "🌧️",
+            71: "🌨️", 73: "🌨️", 75: "🌨️", 77: "🌨️",
+            80: "🌦️", 81: "🌦️", 82: "🌦️",
+            85: "🌨️", 86: "🌨️",
+            95: "⛈️", 96: "⛈️", 99: "⛈️"
+        };
+        const WMO_DESC = {
+            0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+            45: "Fog", 48: "Fog",
+            51: "Drizzle", 53: "Drizzle", 55: "Drizzle",
+            61: "Rain", 63: "Rain", 65: "Heavy Rain",
+            71: "Snow", 73: "Snow", 75: "Heavy Snow",
+            77: "Snow Grains",
+            80: "Showers", 81: "Showers", 82: "Heavy Showers",
+            85: "Snow Showers", 86: "Snow Showers",
+            95: "Thunderstorm", 96: "Thunderstorm", 99: "Thunderstorm"
+        };
+
+        function getDayName(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { weekday: 'short' });
+        }
+
+        async function fetchWeatherData(lat, lon) {
+            weatherErrorMsg.textContent = '';
+            const lang = document.getElementById('langSelect').value || 'Hindi';
+            try {
+                const res = await fetch(`/api/weather_dashboard?lat=${lat}&lon=${lon}&lang=${lang}`);
+                const data = await res.json();
+                if (data.error) {
+                    weatherErrorMsg.textContent = data.error;
+                    return;
+                }
+
+                // Update UI
+                const current = data.current;
+                const code = current.weathercode;
+                weatherLocationText.textContent = data.location_name || "Current Location";
+                weatherCurrentTemp.textContent = `${Math.round(current.temperature)}°`;
+                weatherCurrentIcon.textContent = WMO_ICONS[code] || "❓";
+                weatherCurrentCondition.textContent = WMO_DESC[code] || "Unknown";
+                
+                // Update badge
+                weatherBadgeBtn.innerHTML = `<span>${WMO_ICONS[code] || "⛅"}</span> <span>${Math.round(current.temperature)}°</span>`;
+
+                weatherAiSummary.textContent = data.summary;
+
+                // Render Chart
+                renderWeatherChart(data.forecast);
+                
+                // Render Daily List
+                weatherDailyList.innerHTML = '';
+                data.forecast.forEach(day => {
+                    const item = document.createElement('div');
+                    item.style.display = 'flex';
+                    item.style.justifyContent = 'space-between';
+                    item.style.alignItems = 'center';
+                    item.style.padding = '0.5rem';
+                    item.style.background = 'rgba(255,255,255,0.05)';
+                    item.style.borderRadius = '8px';
+                    
+                    const dayName = getDayName(day.date);
+                    const icon = WMO_ICONS[day.code] || "⛅";
+                    
+                    item.innerHTML = `
+                        <div style="width: 50px;">${dayName}</div>
+                        <div style="font-size: 1.2rem;">${icon}</div>
+                        <div style="color: #60a5fa; font-size: 0.85rem;"><i class="fas fa-tint"></i> ${day.rain_chance}%</div>
+                        <div style="text-align: right; width: 80px;">${Math.round(day.temp_max)}° / <span style="color:var(--text-muted)">${Math.round(day.temp_min)}°</span></div>
+                    `;
+                    weatherDailyList.appendChild(item);
+                });
+
+            } catch (err) {
+                weatherErrorMsg.textContent = "Failed to load weather data.";
+            }
+        }
+
+        function renderWeatherChart(forecast) {
+            const ctx = document.getElementById('weatherChart').getContext('2d');
+            if (weatherChartInstance) {
+                weatherChartInstance.destroy();
+            }
+
+            const labels = forecast.map(d => getDayName(d.date));
+            const tempsMax = forecast.map(d => d.temp_max);
+            const tempsMin = forecast.map(d => d.temp_min);
+
+            weatherChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Max Temp (°C)',
+                            data: tempsMax,
+                            borderColor: '#f87171',
+                            backgroundColor: 'rgba(248, 113, 113, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Min Temp (°C)',
+                            data: tempsMin,
+                            borderColor: '#60a5fa',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                        x: { ticks: { color: '#9ca3af' }, grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        weatherBadgeBtn.addEventListener('click', () => {
+            weatherModal.classList.remove('hidden');
+            
+            if (navigator.geolocation) {
+                weatherLocationText.textContent = "Fetching your location...";
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        weatherLocationText.textContent = "Current Location";
+                        fetchWeatherData(lat, lon);
+                    },
+                    (error) => {
+                        weatherLocationText.textContent = "Location access denied";
+                        weatherErrorMsg.textContent = "Please enable location to see local weather.";
+                        weatherAiSummary.textContent = "Need location access to generate summary.";
+                    }
+                );
+            } else {
+                weatherErrorMsg.textContent = "Geolocation is not supported by this browser.";
+            }
+        });
+
+        closeWeatherBtn.addEventListener('click', () => {
+            weatherModal.classList.add('hidden');
+        });
 
         // ─── Message Functions ───────────────────────────────────────────
         const EMOTION_ICONS = {
@@ -748,37 +1212,50 @@
             }
         }
 
-        // ─── Image Upload ────────────────────────────────────────────────
+        // ─── Image Upload & Camera Capture ───────────────────────────────
         if (imageUploadBtn) {
             imageUploadBtn.addEventListener('click', () => {
                 imageInput.click();
             });
         }
 
-        if (imageInput) {
-            imageInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                if (file.size > 5 * 1024 * 1024) {
-                    alert("File size should be less than 5MB!");
-                    return;
-                }
-
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    selectedImageBase64 = ev.target.result;
-                    imagePreview.src = selectedImageBase64;
-                    imagePreviewContainer.style.display = 'flex';
-                    userInput.focus();
-                };
-                reader.readAsDataURL(file);
+        if (cameraUploadBtn) {
+            cameraUploadBtn.addEventListener('click', () => {
+                cameraInput.click();
             });
+        }
+
+        function handleImageSelection(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.size > 5 * 1024 * 1024) {
+                alert("File size should be less than 5MB!");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                selectedImageBase64 = ev.target.result;
+                imagePreview.src = selectedImageBase64;
+                imagePreviewContainer.style.display = 'flex';
+                userInput.focus();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        if (imageInput) {
+            imageInput.addEventListener('change', handleImageSelection);
+        }
+        
+        if (cameraInput) {
+            cameraInput.addEventListener('change', handleImageSelection);
         }
 
         function clearImagePreview() {
             selectedImageBase64 = null;
             if (imageInput) imageInput.value = '';
+            if (cameraInput) cameraInput.value = '';
             if (imagePreview) imagePreview.src = '';
             if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
         }
