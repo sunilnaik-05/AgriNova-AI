@@ -653,20 +653,42 @@ def chat():
 def weather_dashboard():
     lat = request.args.get('lat')
     lon = request.args.get('lon')
+    location_query = request.args.get('location')
     lang = request.args.get('lang', 'Hindi')
     
-    if not lat or not lon:
-        return jsonify({"error": "Location coordinates required."}), 400
-        
+    location_name = "Unknown Location"
+    
     try:
-        # Reverse Geocode to get location name
-        location_name = "Unknown Location"
-        try:
-            rg_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=en"
-            rg_data = requests.get(rg_url, timeout=5).json()
-            location_name = rg_data.get("city") or rg_data.get("locality") or rg_data.get("principalSubdivision") or "Your Location"
-        except Exception as e:
-            print("Reverse geocode error:", e)
+        if location_query:
+            # Geocode the location query
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={requests.utils.quote(location_query)}&count=5&language=en&format=json"
+            geo_data = requests.get(geo_url, timeout=8).json()
+            if "results" not in geo_data or not geo_data["results"]:
+                return jsonify({"error": f"Location '{location_query}' not found."}), 404
+            
+            # Prefer IN
+            r = geo_data["results"][0]
+            for res in geo_data["results"]:
+                if res.get("country_code") == "IN":
+                    r = res
+                    break
+                    
+            lat = r["latitude"]
+            lon = r["longitude"]
+            place_name = r.get("name", location_query)
+            admin1 = r.get("admin1", "")
+            location_name = f"{place_name}, {admin1}".strip(", ")
+        else:
+            if not lat or not lon:
+                return jsonify({"error": "Location coordinates or name required."}), 400
+            
+            # Reverse Geocode
+            try:
+                rg_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=en"
+                rg_data = requests.get(rg_url, timeout=5).json()
+                location_name = rg_data.get("city") or rg_data.get("locality") or rg_data.get("principalSubdivision") or "Your Location"
+            except Exception as e:
+                print("Reverse geocode error:", e)
 
         # Fetch 7-day daily forecast from Open-Meteo
         weather_url = (

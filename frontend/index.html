@@ -277,7 +277,18 @@
             <div class="lc-heading" style="margin-bottom: 1.5rem; text-align: left; display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                     <div class="lc-title" style="font-size: 1.5rem;">Agri Weather 🌤️</div>
-                    <div class="lc-subtitle" id="weatherLocationText">Fetching location...</div>
+                    <div class="lc-subtitle" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.3rem;">
+                        <span id="weatherLocationText">Fetching location...</span>
+                        <button id="editWeatherLocBtn" style="background: none; border: none; color: #c77dff; cursor: pointer; font-size: 0.9rem;" title="Change Location">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </div>
+                    <div id="weatherLocSearchBox" style="display: none; margin-top: 0.5rem; align-items: center; gap: 0.5rem;">
+                        <input type="text" id="weatherLocInput" class="lc-input" placeholder="City or Village..." style="padding: 0.3rem 0.6rem; font-size: 0.85rem; border-radius: 6px; width: 140px;">
+                        <button id="weatherLocSearchBtn" class="lc-btn" style="padding: 0.3rem 0.8rem; font-size: 0.85rem; min-height: unset; border-radius: 6px;">
+                            <span class="lc-btn-text">Search</span>
+                        </button>
+                    </div>
                 </div>
                 <button id="closeWeatherBtn" style="background: none; border: none; color: #9ca3af; font-size: 1.5rem; cursor: pointer;">
                     <i class="fas fa-times"></i>
@@ -373,6 +384,10 @@
         const weatherCurrentIcon = document.getElementById('weatherCurrentIcon');
         const weatherCurrentCondition = document.getElementById('weatherCurrentCondition');
         const weatherLocationText = document.getElementById('weatherLocationText');
+        const editWeatherLocBtn = document.getElementById('editWeatherLocBtn');
+        const weatherLocSearchBox = document.getElementById('weatherLocSearchBox');
+        const weatherLocInput = document.getElementById('weatherLocInput');
+        const weatherLocSearchBtn = document.getElementById('weatherLocSearchBtn');
         const weatherDailyList = document.getElementById('weatherDailyList');
         const weatherErrorMsg = document.getElementById('weatherErrorMsg');
         let weatherChartInstance = null;
@@ -595,11 +610,20 @@
             return date.toLocaleDateString('en-US', { weekday: 'short' });
         }
 
-        async function fetchWeatherData(lat, lon) {
+        async function fetchWeatherData(lat, lon, locationName = null) {
             weatherErrorMsg.textContent = '';
             const lang = document.getElementById('langSelect').value || 'Hindi';
             try {
-                const res = await fetch(`/api/weather_dashboard?lat=${lat}&lon=${lon}&lang=${lang}`);
+                let url = `/api/weather_dashboard?lang=${lang}`;
+                if (locationName) {
+                    url += `&location=${encodeURIComponent(locationName)}`;
+                } else if (lat && lon) {
+                    url += `&lat=${lat}&lon=${lon}`;
+                } else {
+                    weatherErrorMsg.textContent = "Please provide location.";
+                    return;
+                }
+                const res = await fetch(url);
                 const data = await res.json();
                 if (data.error) {
                     weatherErrorMsg.textContent = data.error;
@@ -701,6 +725,7 @@
 
         weatherBadgeBtn.addEventListener('click', () => {
             weatherModal.classList.remove('hidden');
+            weatherLocSearchBox.style.display = 'none';
             
             if (navigator.geolocation) {
                 weatherLocationText.textContent = "Fetching your location...";
@@ -713,12 +738,34 @@
                     },
                     (error) => {
                         weatherLocationText.textContent = "Location access denied";
-                        weatherErrorMsg.textContent = "Please enable location to see local weather.";
+                        weatherErrorMsg.textContent = "Please enable location or search manually.";
                         weatherAiSummary.textContent = "Need location access to generate summary.";
                     }
                 );
             } else {
                 weatherErrorMsg.textContent = "Geolocation is not supported by this browser.";
+            }
+        });
+
+        editWeatherLocBtn.addEventListener('click', () => {
+            weatherLocSearchBox.style.display = weatherLocSearchBox.style.display === 'none' ? 'flex' : 'none';
+            if (weatherLocSearchBox.style.display === 'flex') {
+                weatherLocInput.focus();
+            }
+        });
+
+        weatherLocSearchBtn.addEventListener('click', () => {
+            const loc = weatherLocInput.value.trim();
+            if (loc) {
+                weatherLocationText.textContent = `Searching for ${loc}...`;
+                fetchWeatherData(null, null, loc);
+                weatherLocSearchBox.style.display = 'none';
+            }
+        });
+
+        weatherLocInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                weatherLocSearchBtn.click();
             }
         });
 

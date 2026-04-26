@@ -31,6 +31,22 @@
       <sub>Multilingual AI chat with crop disease diagnosis via image upload</sub>
     </td>
   </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="screenshots/profile_page.png" alt="AgriNova AI User Profile" width="100%" />
+      <br/>
+      <b>🧑‍🌾 User Profile</b>
+      <br/>
+      <sub>Manage farm context for highly personalized AI advice</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="screenshots/weather_dashboard.png" alt="AgriNova AI Weather Dashboard" width="100%" />
+      <br/>
+      <b>🌤️ Live Weather Dashboard</b>
+      <br/>
+      <sub>7-day forecast with AI-generated multilingual weather summaries</sub>
+    </td>
+  </tr>
 </table>
 
 > 📌 **Live Demo Features Shown:** Kannada language support, image-based crop disease diagnosis (Late Blight detection), emotion-aware responses, and sidebar chat history.
