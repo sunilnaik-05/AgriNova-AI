@@ -8,8 +8,13 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" />
 </p>
 
-**AgriNova AI** is a full-stack, production-ready agricultural AI chatbot built for Indian farmers. It uses Google Gemini 2.5-Flash as its brain, and delivers real-time weather updates, live mandi (market) prices, and expert crop advice — all through a beautiful, glassmorphism-styled web UI. Farmers can communicate in **Kannada, Hindi, or English**, use their **voice**, or even **upload crop images** for disease diagnosis.
+# 🌱 AgriNova AI — Smart Farming Assistant for Indian Farmers
 
+AgriNova AI is a production-ready, full-stack AI assistant that helps farmers make better decisions using real-time weather data, mandi prices, and AI-powered crop disease detection.
+
+Built with Google Gemini 2.5-Flash, it supports multilingual voice interaction and image-based diagnosis — making advanced agricultural intelligence accessible to rural India.
+
+📦 GitHub: https://github.com/sunilnaik4582-jpg/AgriNova-AI)
 ---
 
 ## 📸 Screenshots
