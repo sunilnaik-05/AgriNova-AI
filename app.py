@@ -18,6 +18,9 @@ load_dotenv(override=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+# data.gov.in Agmarknet API key (free — register at https://data.gov.in/user/register)
+DATA_GOV_API_KEY = os.getenv("DATA_GOV_API_KEY")
+
 # ─── Agent Actions ───────────────────────────────────────────────────────────
 def get_weather(location: str):
     """Get the current real-time weather and temperature for a specific location including villages.
@@ -114,27 +117,98 @@ def get_mandi_price(crop: str, state_or_city: str):
         crop: The name of the crop (e.g., Gehu, Chawal, Soyabean, Pyaj).
         state_or_city: The name of the state or city for the mandi.
     """
-    base_prices = {
-        "gehu": 2400, "wheat": 2400, "chawal": 3100, "rice": 3100, "dhaan": 3100,
-        "soyabean": 4200, "soya": 4200, "pyaj": 1500, "onion": 1500, "kanda": 1500,
-        "tamatar": 1200, "tomato": 1200, "sarso": 5100, "mustard": 5100, "kapas": 7000, "cotton": 7000
+    # ── Crop name normalizer (Hindi/local → English for Agmarknet API) ──
+    CROP_MAP = {
+        "gehu": "Wheat",       "wheat": "Wheat",
+        "chawal": "Rice",      "rice": "Rice",
+        "dhaan": "Paddy",      "paddy": "Paddy",
+        "soyabean": "Soyabean","soya": "Soyabean",
+        "pyaj": "Onion",       "onion": "Onion",  "kanda": "Onion",
+        "tamatar": "Tomato",   "tomato": "Tomato",
+        "sarso": "Mustard",    "mustard": "Mustard",
+        "kapas": "Cotton",     "cotton": "Cotton",
+        "makai": "Maize",      "maize": "Maize",  "corn": "Maize",
+        "chana": "Gram",       "gram": "Gram",    "chickpea": "Gram",
+        "arhar": "Arhar (Tur/Red Gram)(Whole)", "tur": "Arhar (Tur/Red Gram)(Whole)",
+        "bajra": "Bajra",      "jowar": "Jowar",
+        "aloo": "Potato",      "potato": "Potato",
     }
-    
-    c = crop.lower().strip()
-    price = 2000 # default
-    for k, v in base_prices.items():
-        if k in c:
-            price = v
+    # Government MSP / reference prices (fallback only)
+    MSP_PRICES = {
+        "Wheat": 2275, "Rice": 2183, "Paddy": 2183,
+        "Soyabean": 4600, "Onion": 1800, "Tomato": 1500,
+        "Mustard": 5650, "Cotton": 7121, "Maize": 2090,
+        "Gram": 5440, "Arhar (Tur/Red Gram)(Whole)": 7000,
+        "Bajra": 2500, "Jowar": 3180, "Potato": 800,
+    }
+
+    crop_lower = crop.lower().strip()
+    api_crop_name = crop.strip()  # default: use as-is
+    for k, v in CROP_MAP.items():
+        if k in crop_lower:
+            api_crop_name = v
             break
-            
-    variation = (len(state_or_city) % 5) * 50 - 100
-    final_price = price + variation
-    
+
+    # ── Try live data.gov.in Agmarknet API ──────────────────────────────
+    if DATA_GOV_API_KEY:
+        try:
+            params = {
+                "api-key": DATA_GOV_API_KEY,
+                "format": "json",
+                "limit": 5,
+                "filters[commodity]": api_crop_name,
+            }
+            # If state name given, filter by it too
+            if state_or_city:
+                params["filters[state]"] = state_or_city.title()
+
+            resp = requests.get(
+                "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070",
+                params=params,
+                timeout=10
+            )
+            data = resp.json()
+            records = data.get("records", [])
+
+            if records:
+                rec = records[0]  # most recent record
+                modal_price = rec.get("modal_price") or rec.get("Modal_Price", "N/A")
+                min_price   = rec.get("min_price")   or rec.get("Min_Price", "N/A")
+                max_price   = rec.get("max_price")   or rec.get("Max_Price", "N/A")
+                market      = rec.get("market")      or rec.get("Market", state_or_city)
+                state       = rec.get("state")       or rec.get("State", "")
+                arr_date    = rec.get("arrival_date") or rec.get("Arrival_Date", "Today")
+
+                return {
+                    "crop": crop,
+                    "location": f"{market}, {state}".strip(", "),
+                    "price_per_quintal_in_rupees": modal_price,
+                    "min_price": min_price,
+                    "max_price": max_price,
+                    "arrival_date": arr_date,
+                    "source": "data.gov.in (Agmarknet — Government of India)",
+                    "market_status": "✅ Live government mandi data"
+                }
+            else:
+                return {
+                    "crop": crop,
+                    "location": state_or_city,
+                    "market_status": f"No Agmarknet records found for '{api_crop_name}' in '{state_or_city}'. Try a different state name (e.g., Karnataka, Punjab).",
+                    "source": "data.gov.in"
+                }
+        except Exception as e:
+            print(f"Mandi API error: {e}")
+            # Fall through to MSP fallback
+
+    # ── Fallback: MSP reference prices with honest disclaimer ───────────
+    ref_price = MSP_PRICES.get(api_crop_name, 2000)
     return {
         "crop": crop,
         "location": state_or_city,
-        "price_per_quintal_in_rupees": final_price,
-        "market_status": "Real price retrieved from Mandi API."
+        "price_per_quintal_in_rupees": ref_price,
+        "source": "Government MSP 2024-25 (Reference only)",
+        "market_status": "⚠️ Estimated MSP price — Set DATA_GOV_API_KEY in .env for live Agmarknet data.",
+        "note": "Register free at https://data.gov.in/user/register to get real prices."
     }
 
 def search_kisan_database(topic: str):
@@ -283,7 +357,7 @@ CORS(app,
          }
      })
 
-app.secret_key = "alpha-ai-secret-key-2024"
+app.secret_key = os.getenv("SECRET_KEY", "fallback-dev-key-change-in-production")
 app.config.update(
     SESSION_COOKIE_SECURE=False,
     SESSION_COOKIE_HTTPONLY=True,
