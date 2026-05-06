@@ -79,6 +79,7 @@
             <div class="input-wrapper">
                 <textarea id="userInput" placeholder="Kuch bhi pucho... main samjhunga 😊" rows="1"></textarea>
                 <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                <!-- cameraInput kept only as fallback if getUserMedia fails -->
                 <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
                 <button class="voice-btn image-upload-btn" id="imageUploadBtn" title="Upload image">
                     <i class="fas fa-image"></i>
@@ -94,6 +95,82 @@
                 </button>
             </div>
         </div>
+    </div>
+
+    <!-- ═══ CAMERA MODAL ═══ -->
+    <div id="cameraModal" style="
+        display: none;
+        position: fixed; inset: 0; z-index: 2000;
+        background: rgba(0,0,0,0.92);
+        align-items: center; justify-content: center;
+        flex-direction: column; gap: 1rem;
+    ">
+        <!-- Close Button -->
+        <button id="closeCameraModal" style="
+            position: absolute; top: 1.2rem; right: 1.5rem;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; font-size: 1.4rem; border-radius: 50%;
+            width: 44px; height: 44px; cursor: pointer; display: flex;
+            align-items: center; justify-content: center;
+            transition: background 0.2s;
+        " title="Close">&times;</button>
+
+        <!-- Camera Label -->
+        <div style="color: rgba(255,255,255,0.7); font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase;">
+            <i class="fas fa-camera" style="color: #c77dff;"></i>&nbsp; Live Camera
+        </div>
+
+        <!-- Video Preview -->
+        <div style="
+            position: relative;
+            border-radius: 16px; overflow: hidden;
+            border: 2px solid rgba(157, 78, 221, 0.5);
+            box-shadow: 0 0 40px rgba(157,78,221,0.3);
+            max-width: 90vw;
+        ">
+            <video id="cameraStream" autoplay playsinline muted style="
+                display: block;
+                width: min(500px, 90vw);
+                height: auto;
+                background: #000;
+                border-radius: 14px;
+            "></video>
+            <!-- Corner brackets decoration -->
+            <div style="position:absolute;top:10px;left:10px;width:24px;height:24px;border-top:2px solid #c77dff;border-left:2px solid #c77dff;border-radius:4px 0 0 0;"></div>
+            <div style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-top:2px solid #c77dff;border-right:2px solid #c77dff;border-radius:0 4px 0 0;"></div>
+            <div style="position:absolute;bottom:10px;left:10px;width:24px;height:24px;border-bottom:2px solid #c77dff;border-left:2px solid #c77dff;border-radius:0 0 0 4px;"></div>
+            <div style="position:absolute;bottom:10px;right:10px;width:24px;height:24px;border-bottom:2px solid #c77dff;border-right:2px solid #c77dff;border-radius:0 0 4px 0;"></div>
+        </div>
+
+        <!-- Capture + Switch buttons -->
+        <div style="display: flex; align-items: center; gap: 1.5rem; margin-top: 0.5rem;">
+            <!-- Switch Camera (mobile) -->
+            <button id="switchCameraBtn" title="Switch Camera" style="
+                background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+                color: white; width: 48px; height: 48px; border-radius: 50%;
+                font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+                transition: all 0.2s;
+            "><i class="fas fa-sync-alt"></i></button>
+
+            <!-- Capture Button -->
+            <button id="capturePhotoBtn" title="Take Photo" style="
+                width: 72px; height: 72px; border-radius: 50%;
+                background: linear-gradient(135deg, #7b2cbf, #c77dff);
+                border: 4px solid rgba(255,255,255,0.3);
+                color: white; font-size: 1.6rem; cursor: pointer;
+                display: flex; align-items: center; justify-content: center;
+                box-shadow: 0 0 30px rgba(157,78,221,0.6);
+                transition: all 0.15s ease;
+            "><i class="fas fa-camera"></i></button>
+
+            <!-- Placeholder for symmetry -->
+            <div style="width: 48px;"></div>
+        </div>
+
+        <div id="cameraErrorMsg" style="color: #f87171; font-size: 0.85rem; text-align: center; padding: 0 1rem;"></div>
+
+        <!-- Hidden canvas for capture -->
+        <canvas id="captureCanvas" style="display: none;"></canvas>
     </div>
 
     <!-- Login Modal (Kept for fallback/legacy) -->
@@ -1259,20 +1336,105 @@
             }
         }
 
-        // ─── Image Upload & Camera Capture ───────────────────────────────
+        // ─── Camera Modal (getUserMedia) ──────────────────────────────────
+        const cameraModal      = document.getElementById('cameraModal');
+        const cameraStream     = document.getElementById('cameraStream');
+        const captureCanvas    = document.getElementById('captureCanvas');
+        const capturePhotoBtn  = document.getElementById('capturePhotoBtn');
+        const closeCameraModal = document.getElementById('closeCameraModal');
+        const switchCameraBtn  = document.getElementById('switchCameraBtn');
+        const cameraErrorMsg   = document.getElementById('cameraErrorMsg');
+
+        let activeCameraStream = null;
+        let facingMode = 'environment'; // back camera by default
+
+        async function openCameraModal() {
+            cameraErrorMsg.textContent = '';
+            cameraModal.style.display = 'flex';
+            await startCamera();
+        }
+
+        async function startCamera() {
+            // Stop existing stream first
+            if (activeCameraStream) {
+                activeCameraStream.getTracks().forEach(t => t.stop());
+                activeCameraStream = null;
+            }
+            cameraErrorMsg.textContent = '';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                activeCameraStream = stream;
+                cameraStream.srcObject = stream;
+            } catch (err) {
+                console.warn('Camera error:', err);
+                // Fallback: open file picker with capture attribute
+                closeCameraModalFn();
+                cameraInput.click();
+            }
+        }
+
+        function closeCameraModalFn() {
+            if (activeCameraStream) {
+                activeCameraStream.getTracks().forEach(t => t.stop());
+                activeCameraStream = null;
+            }
+            cameraStream.srcObject = null;
+            cameraModal.style.display = 'none';
+        }
+
+        capturePhotoBtn.addEventListener('click', () => {
+            if (!activeCameraStream) return;
+            const video = cameraStream;
+            captureCanvas.width  = video.videoWidth;
+            captureCanvas.height = video.videoHeight;
+            captureCanvas.getContext('2d').drawImage(video, 0, 0);
+
+            const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.92);
+            selectedImageBase64 = dataUrl;
+            imagePreview.src = dataUrl;
+            imagePreviewContainer.style.display = 'flex';
+            userInput.focus();
+            closeCameraModalFn();
+        });
+
+        closeCameraModal.addEventListener('click', closeCameraModalFn);
+
+        // Close modal if clicking backdrop
+        cameraModal.addEventListener('click', (e) => {
+            if (e.target === cameraModal) closeCameraModalFn();
+        });
+
+        // Switch front/back camera
+        switchCameraBtn.addEventListener('click', async () => {
+            facingMode = facingMode === 'environment' ? 'user' : 'environment';
+            await startCamera();
+        });
+
+        // Override camera button to open our modal instead of file picker
+        if (cameraUploadBtn) {
+            cameraUploadBtn.addEventListener('click', () => {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    openCameraModal();
+                } else {
+                    // Older browser fallback
+                    cameraInput.click();
+                }
+            });
+        }
+
+        // Gallery/image upload button
         if (imageUploadBtn) {
             imageUploadBtn.addEventListener('click', () => {
                 imageInput.click();
             });
         }
 
-        if (cameraUploadBtn) {
-            cameraUploadBtn.addEventListener('click', () => {
-                cameraInput.click();
-            });
-        }
-
         function handleImageSelection(e) {
+
             const file = e.target.files[0];
             if (!file) return;
 
