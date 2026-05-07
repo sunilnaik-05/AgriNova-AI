@@ -322,8 +322,12 @@ body {
     font-size: 1.4rem;
     cursor: pointer;
     margin-right: 1rem;
-    display: block;
+    display: none;
     transition: color 0.2s;
+}
+
+.sidebar.closed ~ .main-content .menu-toggle {
+    display: block;
 }
 
 .menu-toggle:hover {
@@ -1251,9 +1255,30 @@ select#langSelect option {
 @media (max-width: 768px) {
     body { overflow: hidden; height: 100dvh; }
 
-    /* SIDEBAR: Full-screen solid overlay */
+    /* SIDEBAR: Mobile Drawer with dark overlay */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100dvh;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 400; /* Below sidebar, above everything else */
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .sidebar-overlay.active {
+        display: block;
+        opacity: 1;
+    }
+
     .sidebar {
         width: 100vw !important;
+        max-width: 100vw !important;
         height: 100dvh !important;
         position: fixed;
         top: 0; left: 0;
@@ -1261,8 +1286,6 @@ select#langSelect option {
         transform: translateX(-100%);
         transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
         background: #0d1117 !important;
-        backdrop-filter: none !important;
-        -webkit-backdrop-filter: none !important;
         border-right: none !important;
         box-shadow: none !important;
     }
@@ -1322,6 +1345,10 @@ select#langSelect option {
         top: 0;
         z-index: 50;
         flex-shrink: 0;
+    }
+
+    .top-bar .menu-toggle {
+        display: block !important; /* Always show on mobile if sidebar is closed */
     }
 
     .top-bar h2 { font-size: 1.1rem; font-weight: 700; }

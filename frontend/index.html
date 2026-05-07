@@ -20,8 +20,11 @@
 </head>
 
 <body>
+    <!-- Mobile Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <!-- Sidebar -->
-    <div class="sidebar" id="sidebar">
+    <div class="sidebar closed" id="sidebar">
         <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center;">
             <button class="new-chat-btn" id="newChatBtn" style="flex: 1;">
                 <i class="fas fa-plus"></i> New Chat
@@ -48,8 +51,8 @@
     <!-- Main Content -->
     <div class="main-content" id="mainContent">
         <div class="top-bar">
-            <button id="openSidebarBtn" title="Open Sidebar"
-                style="display:none; background:none; border:none; color:white; font-size:1.4rem; cursor:pointer; margin-right:1rem;">
+            <button id="openSidebarBtn" class="menu-toggle" title="Open Sidebar"
+                style="background:none; border:none; color:white; font-size:1.4rem; cursor:pointer; margin-right:1rem;">
                 <i class="fas fa-bars"></i>
             </button>
             <h2>AgriNova-AI</h2>
@@ -229,6 +232,11 @@
                     <div class="lc-btn-spinner"></div>
                 </button>
             </form>
+
+            <!-- Forgot password link -->
+            <div style="text-align:center; margin-top:0.8rem;">
+                <a href="/login" style="color:#c77dff; font-size:0.85rem; text-decoration:none;">Forgot password?</a>
+            </div>
 
             <!-- Divider -->
             <div class="lc-divider">
@@ -1536,22 +1544,28 @@
 
         openSidebarBtn.addEventListener('click', () => {
             sidebar.classList.remove('closed');
+            document.getElementById('sidebarOverlay').classList.add('active');
             openSidebarBtn.style.display = 'none';
             document.querySelector('.main-content').classList.remove('expanded');
         });
 
-        closeSidebarBtn.addEventListener('click', () => {
+        function closeSidebarMobile() {
             sidebar.classList.add('closed');
+            document.getElementById('sidebarOverlay').classList.remove('active');
             openSidebarBtn.style.display = 'block';
             document.querySelector('.main-content').classList.add('expanded');
-        });
+        }
 
+        closeSidebarBtn.addEventListener('click', closeSidebarMobile);
+        document.getElementById('sidebarOverlay').addEventListener('click', closeSidebarMobile);
+
+        // Handle legacy document click (keeping for safety but overlay handles it mostly)
         document.addEventListener('click', (e) => {
             if (window.innerWidth <= 768 &&
                 !sidebar.contains(e.target) &&
-                !openSidebarBtn.contains(e.target)) {
-                sidebar.classList.add('closed');
-                openSidebarBtn.style.display = 'block';
+                !openSidebarBtn.contains(e.target) &&
+                !e.target.classList.contains('sidebar-overlay')) {
+                closeSidebarMobile();
             }
         });
 

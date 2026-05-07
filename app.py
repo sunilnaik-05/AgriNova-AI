@@ -1,15 +1,20 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, render_template, redirect, url_for, flash, send_from_directory, abort
 from flask_cors import CORS
 import os
 import traceback
-from datetime import timedelta
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from datetime import timedelta, datetime
 import requests
 import json
 import sqlite3
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import secrets
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
 # Load environment variables
 load_dotenv(override=True)
@@ -20,6 +25,10 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # data.gov.in Agmarknet API key (free — register at https://data.gov.in/user/register)
 DATA_GOV_API_KEY = os.getenv("DATA_GOV_API_KEY")
+
+# Email configuration (Gmail SMTP)
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 # ─── Agent Actions ───────────────────────────────────────────────────────────
 def get_weather(location: str):
@@ -328,7 +337,9 @@ def init_db():
         ("farm_size", "TEXT"),
         ("crops_grown", "TEXT"),
         ("soil_type", "TEXT"),
-        ("default_language", "TEXT DEFAULT 'Kannada'")
+        ("default_language", "TEXT DEFAULT 'Kannada'"),
+        ("reset_token", "TEXT"),
+        ("reset_token_expiry", "TIMESTAMP")
     ]
     
     for col_name, col_type in new_columns:
@@ -344,7 +355,7 @@ def init_db():
 init_db()
 
 # Create Flask app
-app = Flask(__name__, static_folder="frontend", static_url_path="")
+app = Flask(__name__, static_folder="frontend", static_url_path="", template_folder="frontend/login/templates")
 
 CORS(app,
      supports_credentials=True,
@@ -374,6 +385,98 @@ def after_request(response):
 def index():
     return app.send_static_file("index.html")
 
+# Upload folder configuration and file utilities
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'frontend', 'login', 'uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {
+    "jpg", "jpeg", "png", "gif", "webp",
+    "mp4", "mov", "mkv", "avi",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "txt", "zip", "rar"
+}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def ensure_user_folder(username):
+    user_folder = os.path.join(app.config['UPLOAD_FOLDER'], username)
+    os.makedirs(user_folder, exist_ok=True)
+    return user_folder
+
+def get_user_files(username):
+    user_folder = ensure_user_folder(username)
+    files_info = []
+    total_size = 0
+    if not os.path.exists(user_folder):
+        return files_info, total_size
+    for filename in os.listdir(user_folder):
+        filepath = os.path.join(user_folder, filename)
+        if os.path.isfile(filepath):
+            file_stat = os.stat(filepath)
+            file_type = filename.split('.')[-1].lower() if '.' in filename else ''
+            files_info.append({
+                'name': filename,
+                'size': file_stat.st_size,
+                'modified': file_stat.st_mtime,
+                'type': file_type
+            })
+            total_size += file_stat.st_size
+    return files_info, total_size
+
+def send_password_reset_email(user_email, username, reset_token):
+    """Send password reset email via Gmail SMTP."""
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        return False, "Email configuration not set on server."
+
+    reset_url = f"http://127.0.0.1:5000/reset-password?token={reset_token}"
+    expiry_text = "1 hour"
+    subject = "🔑 AgriNova AI — Password Reset Request"
+
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: 'Segoe UI', Arial, sans-serif; background:#f4f4f4; padding:2rem;">
+        <div style="max-width:480px; margin:auto; background:#ffffff; padding:2rem; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+            <h2 style="color:#1a73e8; text-align:center;">AgriNova AI</h2>
+            <p>Hello <strong>{username}</strong>,</p>
+            <p>We received a request to reset your password. Click the button below to choose a new password:</p>
+            <p style="text-align:center; margin:2rem 0;">
+                <a href="{reset_url}"
+                   style="background:#1a73e8; color:#ffffff; padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:600; display:inline-block;">
+                    🔒 Reset Password
+                </a>
+            </p>
+            <p style="font-size:0.9rem; color:#666;">
+                This link expires in <strong>{expiry_text}</strong>.<br>
+                If you didn't request this, you can safely ignore this email — your password won't change.
+            </p>
+            <hr style="border:none; border-top:1px solid #eee; margin:1.5rem 0;" />
+            <p style="font-size:0.8rem; color:#999;">AgriNova AI — Your Smart Farming Assistant</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    import base64 # already imported at top but just in case
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = user_email
+
+    part = MIMEText(html_body, "html")
+    msg.attach(part)
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+        return True, "Email sent"
+    except Exception as e:
+        return False, str(e)
+
 @app.route("/check_auth", methods=["GET"])
 def check_auth():
     if 'email' in session or 'username' in session:
@@ -395,12 +498,19 @@ def check_auth():
         })
     return jsonify({'authenticated': False})
 
-@app.route("/login", methods=["POST", "OPTIONS"])
+@app.route("/login", methods=["GET", "POST", "OPTIONS"])
 def login():
     if request.method == "OPTIONS":
         response = jsonify({"status": "preflight"})
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response
+    if request.method == "GET":
+        if 'username' in session or 'email' in session:
+            return redirect(url_for('dashboard'))
+        return render_template('login.html')
+
+    # POST: handle login (AJAX or regular form)
+    is_ajax = request.is_json  # fetch with JSON payload => AJAX
 
     data = request.get_json(silent=True) or request.form
     email = data.get("email", "").strip()
@@ -416,14 +526,22 @@ def login():
         session.permanent = True
         session["username"] = user[1]
         session["email"] = email
-        return jsonify({
-            "status": "success", 
-            "username": user[1], 
-            "profile_image": user[3],
-            "message": "Login successful"
-        })
-
-    return jsonify({"status": "error", "error": "Invalid email or password"}), 401
+        if is_ajax:
+            return jsonify({
+                "status": "success",
+                "username": user[1],
+                "profile_image": user[3],
+                "message": "Login successful"
+            })
+        else:
+            flash("Login successful!", "success")
+            return redirect(url_for('dashboard'))
+    else:
+        if is_ajax:
+            return jsonify({"status": "error", "error": "Invalid email or password"}), 401
+        else:
+            flash("Invalid email or password", "error")
+            return redirect(url_for('login'))
     
 @app.route("/api/register", methods=["POST", "OPTIONS"])
 def register():
@@ -540,12 +658,138 @@ def update_profile():
     finally:
         conn.close()
 
-@app.route("/logout", methods=["POST"])
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
     username = session.pop('username', None)
     if username and username in chat_histories:
         del chat_histories[username]
-    return jsonify({"status": "success"})
+    if request.method == "POST":
+        return jsonify({"status": "success"})
+    else:
+        return redirect(url_for('index'))
+
+
+# ── Password Reset Routes ─────────────────────────────────────────────────────
+@app.route("/api/forgot_password", methods=["POST", "OPTIONS"])
+def forgot_password():
+    """Request a password reset link by email."""
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "preflight"})
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    data = request.get_json(silent=True) or request.form
+    email = data.get("email", "").strip()
+
+    if not email:
+        return jsonify({"status": "error", "error": "Email is required"}), 400
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, email FROM users WHERE email = ?", (email,))
+    user = c.fetchone()
+
+    if not user:
+        conn.close()
+        return jsonify({"status": "success", "message": "If an account exists with that email, you will receive a password reset link."})
+
+    # Generate reset token
+    reset_token = secrets.token_urlsafe(32)
+    expiry = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+
+    c.execute("UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
+              (reset_token, expiry, user[0]))
+    conn.commit()
+    conn.close()
+
+    success, msg = send_password_reset_email(email, user[1], reset_token)
+    if not success:
+        print(f"Failed to send reset email: {msg}")
+        if not EMAIL_ADDRESS:  # dev mode
+            reset_url = f"http://127.0.0.1:5000/reset-password?token={reset_token}"
+            return jsonify({"status": "dev", "reset_url": reset_url, "message": "Email not configured (development mode)"})
+
+    return jsonify({"status": "success", "message": "If an account exists with that email, you will receive a password reset link."})
+
+
+@app.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    token = request.args.get("token") if request.method == "GET" else request.form.get("token")
+    if request.method == "GET":
+        if not token:
+            flash("Invalid reset link.", "error")
+            return redirect(url_for('login'))
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("SELECT id, name, reset_token, reset_token_expiry FROM users WHERE reset_token = ?", (token,))
+        user = c.fetchone()
+        conn.close()
+        if not user:
+            flash("Invalid or expired reset link.", "error")
+            return redirect(url_for('login'))
+        expiry = datetime.fromisoformat(user[3]) if user[3] else None
+        if expiry and expiry < datetime.utcnow():
+            flash("This reset link has expired. Please request a new one.", "error")
+            return redirect(url_for('login'))
+        return render_template("reset_password.html", token=token, username=user[1])
+    # POST
+    token = request.form.get("token", "").strip()
+    new_password = request.form.get("password", "").strip()
+    confirm_password = request.form.get("confirm_password", "").strip()
+    if not new_password or new_password != confirm_password:
+        return render_template("reset_password.html", token=token, error="Passwords do not match.", username="User")
+    if len(new_password) < 6:
+        return render_template("reset_password.html", token=token, error="Password must be at least 6 characters.", username="User")
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, reset_token_expiry FROM users WHERE reset_token = ?", (token,))
+    user = c.fetchone()
+    if not user:
+        conn.close()
+        return render_template("reset_password.html", token=token, error="Invalid reset link.", username="User")
+    expiry = datetime.fromisoformat(user[1]) if user[1] else None
+    if expiry and expiry < datetime.utcnow():
+        conn.close()
+        return render_template("reset_password.html", token=token, error="Reset link expired.", username="User")
+    hashed = generate_password_hash(new_password)
+    c.execute("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+              (hashed, user[0]))
+    conn.commit()
+    conn.close()
+    flash("Password reset successful! You can now log in.", "success")
+    return redirect(url_for('index'))
+
+
+@app.route("/api/reset_password", methods=["POST", "OPTIONS"])
+def api_reset_password():
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "preflight"})
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+    data = request.get_json(silent=True) or request.form
+    token = data.get("token", "").strip()
+    new_password = data.get("password", "").strip()
+    if not token or not new_password:
+        return jsonify({"status": "error", "error": "Token and password are required"}), 400
+    if len(new_password) < 6:
+        return jsonify({"status": "error", "error": "Password must be at least 6 characters"}), 400
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, reset_token_expiry FROM users WHERE reset_token = ?", (token,))
+    user = c.fetchone()
+    if not user:
+        conn.close()
+        return jsonify({"status": "error", "error": "Invalid reset link"}), 400
+    expiry = datetime.fromisoformat(user[1]) if user[1] else None
+    if expiry and expiry < datetime.utcnow():
+        conn.close()
+        return jsonify({"status": "error", "error": "Reset link expired"}), 400
+    hashed = generate_password_hash(new_password)
+    c.execute("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+              (hashed, user[0]))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success", "message": "Password reset successful"})
 
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])
@@ -630,7 +874,7 @@ def chat():
 
         # Call Gemini new SDK
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=contents,
             config=config
         )
@@ -670,7 +914,7 @@ def chat():
 
             # Re-call
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.0-flash",
                 contents=contents,
                 config=config
             )
@@ -800,7 +1044,7 @@ def weather_dashboard():
         )
         
         summary_res = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=[summary_prompt],
         )
         ai_summary = summary_res.text.strip()
@@ -825,6 +1069,101 @@ def clear_chat():
         del chat_histories[username]
 
     return jsonify({"status": "success"})
+
+
+# ── Dashboard / File Manager Routes ───────────────────────────────────────────
+@app.route('/dashboard', methods=['GET', 'POST'])
+def dashboard():
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('No file part', 'error')
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            flash('No selected file', 'error')
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            user_folder = ensure_user_folder(session['username'])
+            file.save(os.path.join(user_folder, filename))
+            flash('File uploaded successfully', 'success')
+        else:
+            flash('Invalid file type', 'error')
+        return redirect(url_for('dashboard'))
+    files, _ = get_user_files(session['username'])
+    images_ext = {'jpg','jpeg','png','gif','webp'}
+    videos_ext = {'mp4','mov','mkv','avi'}
+    docs_ext = {'pdf','doc','docx','xls','xlsx','ppt','pptx','txt','zip','rar'}
+    photos = [f for f in files if f['type'].lower() in images_ext]
+    videos_list = [f for f in files if f['type'].lower() in videos_ext]  # renamed to avoid conflict with videos route
+    docs = [f for f in files if f['type'].lower() in docs_ext]
+    return render_template('dashboard.html',
+                           username=session.get('username'),
+                           photos_count=len(photos),
+                           videos_count=len(videos_list),
+                           docs_count=len(docs))
+
+@app.route('/photos')
+def photos():
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    files, _ = get_user_files(session['username'])
+    images_ext = {'jpg','jpeg','png','gif','webp'}
+    images = [f for f in files if f['type'].lower() in images_ext]
+    for f in images:
+        f['view_url'] = url_for('serve_upload', username=session['username'], filename=f['name'])
+        f['display_name'] = os.path.splitext(f['name'])[0]
+    return render_template('photos.html', files=images, username=session.get('username'))
+
+@app.route('/videos')
+def videos():
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    files, _ = get_user_files(session['username'])
+    videos_ext = {'mp4','mov','mkv','avi'}
+    video_files = [f for f in files if f['type'].lower() in videos_ext]
+    for f in video_files:
+        f['view_url'] = url_for('serve_upload', username=session['username'], filename=f['name'])
+        f['display_name'] = os.path.splitext(f['name'])[0]
+    return render_template('videos.html', files=video_files, username=session.get('username'))
+
+@app.route('/docs')
+def docs():
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    files, _ = get_user_files(session['username'])
+    docs_ext = {'pdf','doc','docx','xls','xlsx','ppt','pptx','txt','zip','rar'}
+    doc_files = [f for f in files if f['type'].lower() in docs_ext]
+    for f in doc_files:
+        f['view_url'] = url_for('serve_upload', username=session['username'], filename=f['name'])
+        f['display_name'] = os.path.splitext(f['name'])[0]
+    return render_template('docs.html', files=doc_files, username=session.get('username'))
+
+@app.route('/delete', methods=['POST'])
+def delete_multiple():
+    if 'username' not in session:
+        return redirect(url_for('index'))
+    filenames = request.form.getlist('selected_files')
+    if not filenames:
+        flash('No files selected', 'info')
+        return redirect(request.referrer or url_for('dashboard'))
+    user_folder = ensure_user_folder(session['username'])
+    deleted = 0
+    for fname in filenames:
+        fpath = os.path.join(user_folder, fname)
+        if os.path.exists(fpath):
+            os.remove(fpath)
+            deleted += 1
+    flash(f'Deleted {deleted} file(s)', 'success')
+    return redirect(request.referrer or url_for('dashboard'))
+
+@app.route('/uploads/<username>/<filename>')
+def serve_upload(username, filename):
+    if 'username' not in session or session['username'] != username:
+        abort(403)
+    return send_from_directory(os.path.join(app.config['UPLOAD_FOLDER'], username), filename)
 
 
 if __name__ == "__main__":
