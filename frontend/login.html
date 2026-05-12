@@ -516,7 +516,7 @@
                     </div>
                     
                     <div class="forgot-password">
-                        <a href="#">Forgot Password?</a>
+                        <a href="#" id="forgotPassword">Forgot Password?</a>
                     </div>
                     
                     <button type="submit" class="btn-login" id="loginBtn">
@@ -819,6 +819,38 @@
             const isPass = regPassInput.type === 'password';
             regPassInput.type = isPass ? 'text' : 'password';
             regEyeBtn.textContent = isPass ? 'Hide' : 'Show';
+        });
+
+        const forgotPasswordBtn = document.getElementById('forgotPassword');
+        forgotPasswordBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            let email = document.getElementById('email').value.trim();
+            
+            if (!email) {
+                email = prompt("Please enter your email to reset password:");
+                if (!email) return;
+            }
+
+            showStatus("Sending reset link... ⏳", "info");
+            
+            try {
+                const res = await fetch('/api/forgot_password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    showStatus("Reset link sent! Check your email. 📧", "success");
+                } else if (data.status === 'dev') {
+                    showStatus(`Dev Mode: <a href="${data.reset_url}" style="color:white;text-decoration:underline;">Click here to reset password</a>`, "info");
+                } else {
+                    showStatus(data.error || "Failed to send reset link", "error");
+                }
+            } catch (err) {
+                showStatus("Connection error", "error");
+            }
         });
 
     </script>

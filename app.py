@@ -513,7 +513,7 @@ def login():
     is_ajax = request.is_json  # fetch with JSON payload => AJAX
 
     data = request.get_json(silent=True) or request.form
-    email = data.get("email", "").strip()
+    email = (data.get("email") or data.get("username") or "").strip()
     password = data.get("password", "").strip()
 
     conn = sqlite3.connect('users.db')

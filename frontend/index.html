@@ -24,7 +24,7 @@
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- Sidebar -->
-    <div class="sidebar closed" id="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center;">
             <button class="new-chat-btn" id="newChatBtn" style="flex: 1;">
                 <i class="fas fa-plus"></i> New Chat
@@ -210,10 +210,10 @@
 
             <form id="loginForm" autocomplete="off">
                 <div class="lc-field">
-                    <label class="lc-label" for="username">Username</label>
+                    <label class="lc-label" for="username">Email</label>
                     <div class="lc-input-wrap">
                         <span class="lc-icon">👤</span>
-                        <input type="text" id="username" class="lc-input" placeholder="Enter your username"
+                        <input type="text" id="username" class="lc-input" placeholder="Enter your email"
                             autocomplete="off" required>
                     </div>
                 </div>
@@ -534,7 +534,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ email, password })
                 });
 
                 const data = await response.json();
@@ -1591,6 +1591,15 @@
         setupVoice();
         renderSidebar();
         checkAuthStatus();
+
+        // Initial sidebar state based on screen width
+        if (window.innerWidth <= 768) {
+            sidebar.classList.add('closed');
+            openSidebarBtn.style.display = 'block';
+        } else {
+            sidebar.classList.remove('closed');
+            openSidebarBtn.style.display = 'none';
+        }
 
         // ── Login Modal: Typewriter ──────────────────────────────────────
         (function () {

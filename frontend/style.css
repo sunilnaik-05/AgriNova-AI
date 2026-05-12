@@ -272,6 +272,13 @@ body {
     transform: translateX(-100%);
 }
 
+.sidebar.closed ~ .main-content {
+    margin-left: 0;
+    width: 100%;
+}
+
+
+
 /* Background glow effects */
 .main-content::before {
     content: '';
@@ -327,7 +334,7 @@ body {
 }
 
 .sidebar.closed ~ .main-content .menu-toggle {
-    display: block;
+    display: block !important;
 }
 
 .menu-toggle:hover {
