@@ -1043,11 +1043,28 @@ def weather_dashboard():
             f"Tell them if rain is expected, and how the temperature will be. Do NOT use markdown or complex words. Keep it very conversational."
         )
         
-        summary_res = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[summary_prompt],
-        )
-        ai_summary = summary_res.text.strip()
+        try:
+            summary_res = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[summary_prompt],
+            )
+            ai_summary = summary_res.text.strip()
+        except Exception as e:
+            print(f"Gemini Weather Summary Error: {e}")
+            # Fallback summary logic
+            max_temp = max([f['temp_max'] for f in forecast]) if forecast else "N/A"
+            min_temp = min([f['temp_min'] for f in forecast]) if forecast else "N/A"
+            will_rain = any([f['rain_chance'] > 40 for f in forecast])
+            
+            if lang == "Hindi":
+                rain_text = "kuch din baarish ki sambhavna hai" if will_rain else "mausam saaf rahega"
+                ai_summary = f"Agle 7 dino mein tapman {min_temp}°C se {max_temp}°C ke beech rahega aur {rain_text}. Kripya apni fasal ka dhyan rakhein."
+            elif lang == "Kannada":
+                rain_text = "ಕೆಲವು ದಿನ ಮಳೆಯಾಗುವ ಸಾಧ್ಯತೆಯಿದೆ" if will_rain else "ಹವಾಮಾನವು ಸ್ಪಷ್ಟವಾಗಿರುತ್ತದೆ"
+                ai_summary = f"ಮುಂದಿನ 7 ದಿನಗಳಲ್ಲಿ ತಾಪಮಾನವು {min_temp}°C ರಿಂದ {max_temp}°C ವರೆಗೆ ಇರುತ್ತದೆ ಮತ್ತು {rain_text}. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಬೆಳೆಯ ಬಗ್ಗೆ ಕಾಳಜಿ ವಹಿಸಿ."
+            else:
+                rain_text = "some rain is expected" if will_rain else "the weather will be mostly clear"
+                ai_summary = f"In the next 7 days, temperatures will range from {min_temp}°C to {max_temp}°C and {rain_text}. Please take care of your crops."
         
         return jsonify({
             "current": current,
