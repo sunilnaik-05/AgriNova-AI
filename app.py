@@ -12,7 +12,7 @@ import traceback
 from datetime import timedelta, datetime
 import requests
 import json
-import sqlite3
+import pymongo
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -320,44 +320,19 @@ FALLBACK_REPLIES = {
     "neutral":  "Haan bolo! Main sun raha hun. Kya jaanna chahte ho?"
 }
 
-# In-memory chat history per user (list of Content dicts)
-chat_histories = {}
+# In-memory chat history per user is removed, we use MongoDB instead.
+
+import urllib.parse
+# Setup MongoDB client
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://sunilnaik4582_db_user:R6uLDQUnsk0OQ4AD@cluster0.e1kabzk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+mongo_client = pymongo.MongoClient(MONGO_URI)
+db = mongo_client["agrinova_db"]
+users_collection = db["users"]
+chat_history_collection = db["chat_histories"]
 
 def init_db():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            location TEXT,
-            mobile TEXT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Run migrations for new profile fields
-    new_columns = [
-        ("profile_image", "TEXT"),
-        ("farm_size", "TEXT"),
-        ("crops_grown", "TEXT"),
-        ("soil_type", "TEXT"),
-        ("default_language", "TEXT DEFAULT 'Kannada'"),
-        ("reset_token", "TEXT"),
-        ("reset_token_expiry", "TIMESTAMP")
-    ]
-    
-    for col_name, col_type in new_columns:
-        try:
-            c.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}")
-        except sqlite3.OperationalError:
-            # Column already exists
-            pass
-            
-    conn.commit()
-    conn.close()
+    # MongoDB creates collections automatically. We just ensure email is unique.
+    users_collection.create_index("email", unique=True)
 
 init_db()
 
@@ -490,13 +465,9 @@ def check_auth():
         email = session.get('email')
         profile_image = None
         if email:
-            conn = sqlite3.connect('users.db')
-            c = conn.cursor()
-            c.execute("SELECT profile_image FROM users WHERE email = ?", (email,))
-            user = c.fetchone()
+            user = users_collection.find_one({"email": email})
             if user:
-                profile_image = user[0]
-            conn.close()
+                profile_image = user.get("profile_image")
             
         return jsonify({
             'authenticated': True, 
@@ -523,21 +494,17 @@ def login():
     email = (data.get("email") or data.get("username") or "").strip()
     password = data.get("password", "").strip()
 
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT id, name, password_hash, profile_image FROM users WHERE email = ?", (email,))
-    user = c.fetchone()
-    conn.close()
+    user = users_collection.find_one({"email": email})
 
-    if user and check_password_hash(user[2], password):
+    if user and check_password_hash(user["password_hash"], password):
         session.permanent = True
-        session["username"] = user[1]
+        session["username"] = user.get("name", "")
         session["email"] = email
         if is_ajax:
             return jsonify({
                 "status": "success",
-                "username": user[1],
-                "profile_image": user[3],
+                "username": user.get("name", ""),
+                "profile_image": user.get("profile_image"),
                 "message": "Login successful"
             })
         else:
@@ -570,14 +537,16 @@ def register():
     hashed_password = generate_password_hash(password)
 
     try:
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute("INSERT INTO users (name, location, mobile, email, password_hash) VALUES (?, ?, ?, ?, ?)",
-                  (name, location, mobile, email, hashed_password))
-        conn.commit()
-        conn.close()
+        users_collection.insert_one({
+            "name": name,
+            "location": location,
+            "mobile": mobile,
+            "email": email,
+            "password_hash": hashed_password,
+            "created_at": datetime.now()
+        })
         return jsonify({"status": "success", "message": "Registration successful"})
-    except sqlite3.IntegrityError:
+    except pymongo.errors.DuplicateKeyError:
         return jsonify({"status": "error", "error": "Email already exists! Please login instead."}), 400
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -588,28 +557,21 @@ def get_profile():
     if "email" not in session:
         return jsonify({"status": "error", "error": "Not authenticated"}), 401
     
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("""
-        SELECT name, email, mobile, location, profile_image, farm_size, crops_grown, soil_type, default_language 
-        FROM users WHERE email = ?
-    """, (session["email"],))
-    user = c.fetchone()
-    conn.close()
+    user = users_collection.find_one({"email": session["email"]})
     
     if user:
         return jsonify({
             "status": "success",
             "profile": {
-                "name": user[0],
-                "email": user[1],
-                "mobile": user[2],
-                "location": user[3],
-                "profile_image": user[4],
-                "farm_size": user[5],
-                "crops_grown": user[6],
-                "soil_type": user[7],
-                "default_language": user[8] or "Kannada"
+                "name": user.get("name", ""),
+                "email": user.get("email", ""),
+                "mobile": user.get("mobile", ""),
+                "location": user.get("location", ""),
+                "profile_image": user.get("profile_image", ""),
+                "farm_size": user.get("farm_size", ""),
+                "crops_grown": user.get("crops_grown", ""),
+                "soil_type": user.get("soil_type", ""),
+                "default_language": user.get("default_language", "Kannada")
             }
         })
     return jsonify({"status": "error", "error": "User not found"}), 404
@@ -637,39 +599,36 @@ def update_profile():
 
     email = session["email"]
     
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    
+    update_data = {
+        "name": name,
+        "mobile": mobile,
+        "location": location,
+        "profile_image": profile_image,
+        "farm_size": farm_size,
+        "crops_grown": crops_grown,
+        "soil_type": soil_type,
+        "default_language": default_language
+    }
+
     try:
         if password:
-            hashed_password = generate_password_hash(password)
-            c.execute("""
-                UPDATE users SET 
-                    name = ?, mobile = ?, location = ?, profile_image = ?, 
-                    farm_size = ?, crops_grown = ?, soil_type = ?, default_language = ?, password_hash = ?
-                WHERE email = ?
-            """, (name, mobile, location, profile_image, farm_size, crops_grown, soil_type, default_language, hashed_password, email))
-        else:
-            c.execute("""
-                UPDATE users SET 
-                    name = ?, mobile = ?, location = ?, profile_image = ?, 
-                    farm_size = ?, crops_grown = ?, soil_type = ?, default_language = ?
-                WHERE email = ?
-            """, (name, mobile, location, profile_image, farm_size, crops_grown, soil_type, default_language, email))
+            update_data["password_hash"] = generate_password_hash(password)
+            
+        users_collection.update_one(
+            {"email": email},
+            {"$set": update_data}
+        )
         
-        conn.commit()
         session["username"] = name # Update session if name changed
         return jsonify({"status": "success", "message": "Profile updated successfully"})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-    finally:
-        conn.close()
 
 @app.route("/logout", methods=["GET", "POST"])
 def logout():
     username = session.pop('username', None)
-    if username and username in chat_histories:
-        del chat_histories[username]
+    if username:
+        pass # We no longer delete history on logout
     if request.method == "POST":
         return jsonify({"status": "success"})
     else:
@@ -691,30 +650,21 @@ def forgot_password():
     if not email:
         return jsonify({"status": "error", "error": "Email is required"}), 400
 
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT id, name, email FROM users WHERE email = ?", (email,))
-    user = c.fetchone()
+    user = users_collection.find_one({"email": email})
 
     if not user:
-        conn.close()
         return jsonify({"status": "success", "message": "If an account exists with that email, you will receive a password reset link."})
 
     # Generate reset token
     reset_token = secrets.token_urlsafe(32)
     expiry = (datetime.utcnow() + timedelta(hours=1)).isoformat()
 
-    c.execute("UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?",
-              (reset_token, expiry, user[0]))
-    conn.commit()
-    conn.close()
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"reset_token": reset_token, "reset_token_expiry": expiry}}
+    )
 
-    success, msg = send_password_reset_email(email, user[1], reset_token)
-    if not success:
-        print(f"Failed to send reset email: {msg}")
-        if not EMAIL_ADDRESS:  # dev mode
-            reset_url = f"http://127.0.0.1:5000/reset-password?token={reset_token}"
-            return jsonify({"status": "dev", "reset_url": reset_url, "message": "Email not configured (development mode)"})
+    success, msg = send_password_reset_email(email, user.get("name", ""), reset_token)
 
     return jsonify({"status": "success", "message": "If an account exists with that email, you will receive a password reset link."})
 
@@ -726,19 +676,15 @@ def reset_password():
         if not token:
             flash("Invalid reset link.", "error")
             return redirect(url_for('login'))
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute("SELECT id, name, reset_token, reset_token_expiry FROM users WHERE reset_token = ?", (token,))
-        user = c.fetchone()
-        conn.close()
+        user = users_collection.find_one({"reset_token": token})
         if not user:
             flash("Invalid or expired reset link.", "error")
             return redirect(url_for('login'))
-        expiry = datetime.fromisoformat(user[3]) if user[3] else None
+        expiry = datetime.fromisoformat(user.get("reset_token_expiry")) if user.get("reset_token_expiry") else None
         if expiry and expiry < datetime.utcnow():
             flash("This reset link has expired. Please request a new one.", "error")
             return redirect(url_for('login'))
-        return render_template("reset_password.html", token=token, username=user[1])
+        return render_template("reset_password.html", token=token, username=user.get("name", ""))
     # POST
     token = request.form.get("token", "").strip()
     new_password = request.form.get("password", "").strip()
@@ -747,22 +693,17 @@ def reset_password():
         return render_template("reset_password.html", token=token, error="Passwords do not match.", username="User")
     if len(new_password) < 6:
         return render_template("reset_password.html", token=token, error="Password must be at least 6 characters.", username="User")
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT id, reset_token_expiry FROM users WHERE reset_token = ?", (token,))
-    user = c.fetchone()
+    user = users_collection.find_one({"reset_token": token})
     if not user:
-        conn.close()
         return render_template("reset_password.html", token=token, error="Invalid reset link.", username="User")
-    expiry = datetime.fromisoformat(user[1]) if user[1] else None
+    expiry = datetime.fromisoformat(user.get("reset_token_expiry")) if user.get("reset_token_expiry") else None
     if expiry and expiry < datetime.utcnow():
-        conn.close()
         return render_template("reset_password.html", token=token, error="Reset link expired.", username="User")
     hashed = generate_password_hash(new_password)
-    c.execute("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
-              (hashed, user[0]))
-    conn.commit()
-    conn.close()
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password_hash": hashed}, "$unset": {"reset_token": "", "reset_token_expiry": ""}}
+    )
     flash("Password reset successful! You can now log in.", "success")
     return redirect(url_for('index'))
 
@@ -780,22 +721,17 @@ def api_reset_password():
         return jsonify({"status": "error", "error": "Token and password are required"}), 400
     if len(new_password) < 6:
         return jsonify({"status": "error", "error": "Password must be at least 6 characters"}), 400
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT id, reset_token_expiry FROM users WHERE reset_token = ?", (token,))
-    user = c.fetchone()
+    user = users_collection.find_one({"reset_token": token})
     if not user:
-        conn.close()
         return jsonify({"status": "error", "error": "Invalid reset link"}), 400
-    expiry = datetime.fromisoformat(user[1]) if user[1] else None
+    expiry = datetime.fromisoformat(user.get("reset_token_expiry")) if user.get("reset_token_expiry") else None
     if expiry and expiry < datetime.utcnow():
-        conn.close()
         return jsonify({"status": "error", "error": "Reset link expired"}), 400
     hashed = generate_password_hash(new_password)
-    c.execute("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
-              (hashed, user[0]))
-    conn.commit()
-    conn.close()
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password_hash": hashed}, "$unset": {"reset_token": "", "reset_token_expiry": ""}}
+    )
     return jsonify({"status": "success", "message": "Password reset successful"})
 
 
@@ -839,10 +775,15 @@ def chat():
         full_message = f"Selected language: {language}\nUser emotion: {emotion}\nUser message: {message}{user_context}".strip()
 
         # Get or init history
-        if username not in chat_histories:
-            chat_histories[username] = []
-
-        history = chat_histories[username]
+        # Get or init history from MongoDB
+        user_history_doc = chat_history_collection.find_one({"username": username})
+        history = []
+        if user_history_doc and "history" in user_history_doc:
+            # Reconstruct types.Content
+            for msg in user_history_doc["history"]:
+                role = msg.get("role")
+                parts = [types.Part(text=p) for p in msg.get("parts", [])]
+                history.append(types.Content(role=role, parts=parts))
 
         # Build contents list for multi-turn
         contents = []
@@ -941,18 +882,33 @@ def chat():
 
         # Save to history (we save the clean reply visually, or we can save the SSML)
         # We will save the SSML; the frontend will parse it securely
-        chat_histories[username].append(types.Content(
+        # Append to the history list
+        history.append(types.Content(
             role="user",
             parts=[types.Part(text=full_message)]
         ))
-        chat_histories[username].append(types.Content(
+        history.append(types.Content(
             role="model",
             parts=[types.Part(text=reply)]
         ))
 
         # Keep history trimmed (last 20 exchanges)
-        if len(chat_histories[username]) > 40:
-            chat_histories[username] = chat_histories[username][-40:]
+        if len(history) > 40:
+            history = history[-40:]
+            
+        # Serialize history for MongoDB
+        serialized_history = []
+        for h in history:
+            serialized_history.append({
+                "role": h.role,
+                "parts": [p.text for p in h.parts if p.text]
+            })
+            
+        chat_history_collection.update_one(
+            {"username": username},
+            {"$set": {"history": serialized_history}},
+            upsert=True
+        )
 
         return jsonify({"reply": ssml_reply, "emotion": emotion})
 
@@ -1096,8 +1052,8 @@ def clear_chat():
         return jsonify({"status": "error"}), 401
 
     username = session["username"]
-    if username in chat_histories:
-        del chat_histories[username]
+    if username:
+        chat_history_collection.delete_one({"username": username})
 
     return jsonify({"status": "success"})
 
