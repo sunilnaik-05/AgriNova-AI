@@ -879,12 +879,23 @@ def chat():
             tools=[get_weather, get_mandi_price, search_kisan_database]
         )
 
+        def generate_with_fallback(contents, config):
+            models_to_try = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-1.5-flash"]
+            last_error = None
+            for m in models_to_try:
+                try:
+                    return client.models.generate_content(model=m, contents=contents, config=config)
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "503" in err_str or "500" in err_str or "unavailable" in err_str or "429" in err_str or "quota" in err_str or "resourceexhausted" in err_str:
+                        last_error = e
+                        continue
+                    else:
+                        raise e
+            raise last_error
+
         # Call Gemini new SDK
-        response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=contents,
-            config=config
-        )
+        response = generate_with_fallback(contents, config)
         
         max_tool_calls = 3
         calls = 0
@@ -920,11 +931,7 @@ def chat():
             )
 
             # Re-call
-            response = client.models.generate_content(
-                model="gemini-3.5-flash",
-                contents=contents,
-                config=config
-            )
+            response = generate_with_fallback(contents, config)
             calls += 1
 
         reply = response.text
