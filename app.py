@@ -5,6 +5,8 @@ try:
 except ImportError:
     pass
 
+import sqlite3
+
 from flask import Flask, request, jsonify, session, render_template, redirect, url_for, flash, send_from_directory, abort
 from flask_cors import CORS
 import os
