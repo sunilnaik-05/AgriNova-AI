@@ -1,3 +1,10 @@
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
 from flask import Flask, request, jsonify, session, render_template, redirect, url_for, flash, send_from_directory, abort
 from flask_cors import CORS
 import os
@@ -874,7 +881,7 @@ def chat():
 
         # Call Gemini new SDK
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3.5-flash",
             contents=contents,
             config=config
         )
@@ -914,7 +921,7 @@ def chat():
 
             # Re-call
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3.5-flash",
                 contents=contents,
                 config=config
             )

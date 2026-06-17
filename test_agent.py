@@ -1,4 +1,7 @@
-import os
+import os, sys
+sys.stdout = open('agent_result.txt', 'w', encoding='utf-8')
+sys.stderr = sys.stdout
+
 from dotenv import load_dotenv
 load_dotenv()
 from google import genai
@@ -18,7 +21,7 @@ def test_agent_query(query: str, language="Hindi"):
     contents = [types.Content(role="user", parts=[types.Part(text=query)])]
     
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=contents,
         config=config
     )
@@ -50,7 +53,7 @@ def test_agent_query(query: str, language="Hindi"):
         contents.append(types.Content(role="user", parts=parts))
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash",
             contents=contents,
             config=config
         )
@@ -66,3 +69,5 @@ if __name__ == "__main__":
     print("-" * 50)
     print("TEST 2: Mandi Price Check")
     test_agent_query("Chawal ka kya daam chal raha hai Bhopal mein?")
+
+    sys.stdout.close()
