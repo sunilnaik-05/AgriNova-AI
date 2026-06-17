@@ -323,9 +323,11 @@ FALLBACK_REPLIES = {
 # In-memory chat history per user is removed, we use MongoDB instead.
 
 import urllib.parse
+import certifi
+
 # Setup MongoDB client
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://sunilnaik4582_db_user:R6uLDQUnsk0OQ4AD@cluster0.e1kabzk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-mongo_client = pymongo.MongoClient(MONGO_URI)
+mongo_client = pymongo.MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 db = mongo_client["agrinova_db"]
 users_collection = db["users"]
 chat_history_collection = db["chat_histories"]
