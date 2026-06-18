@@ -830,15 +830,13 @@ def chat():
             last_error = None
             for m in models_to_try:
                 try:
-                    return client.models.generate_content(model=m, contents=contents, config=config)
+                    return client.models.generate_content(model=m, contents=contents, config=config, http_options={"timeout": 12.0})
                 except Exception as e:
-                    err_str = str(e).lower()
-                    if "503" in err_str or "500" in err_str or "unavailable" in err_str or "429" in err_str or "quota" in err_str or "resourceexhausted" in err_str:
-                        last_error = e
-                        continue
-                    else:
-                        raise e
+                    print(f"Fallback warning: Model {m} failed: {e}")
+                    last_error = e
+                    continue
             raise last_error
+
 
         # Call Gemini new SDK
         response = generate_with_fallback(contents, config)
