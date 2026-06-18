@@ -765,15 +765,15 @@ def chat():
         
         user_context = ""
         if email:
-            conn = sqlite3.connect('users.db')
-            c = conn.cursor()
-            c.execute("SELECT location, farm_size, crops_grown, soil_type FROM users WHERE email = ?", (email,))
-            u = c.fetchone()
+            u = users_collection.find_one({"email": email})
             if u:
-                loc, fsize, crops, soil = u
+                loc = u.get("location")
+                fsize = u.get("farm_size")
+                crops = u.get("crops_grown")
+                soil = u.get("soil_type")
                 if any([loc, fsize, crops, soil]):
                     user_context = f"\n[User Profile Context: Location: {loc or 'N/A'}, Farm Size: {fsize or 'N/A'}, Crops Grown: {crops or 'N/A'}, Soil Type: {soil or 'N/A'} - Use this context to provide hyper-personalized advice.]"
-            conn.close()
+
 
         # Build message exactly as the prompt instructs
         full_message = f"Selected language: {language}\nUser emotion: {emotion}\nUser message: {message}{user_context}".strip()
