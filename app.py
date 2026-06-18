@@ -30,7 +30,7 @@ load_dotenv(override=True)
 
 # Configure Gemini (new SDK)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 12.0})
+client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 30.0})
 
 # data.gov.in Agmarknet API key (free — register at https://data.gov.in/user/register)
 DATA_GOV_API_KEY = os.getenv("DATA_GOV_API_KEY")
@@ -826,7 +826,7 @@ def chat():
         )
 
         def generate_with_fallback(contents, config):
-            models_to_try = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-1.5-flash"]
+            models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
             last_error = None
             for m in models_to_try:
                 try:
