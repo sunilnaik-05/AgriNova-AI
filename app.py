@@ -30,7 +30,7 @@ load_dotenv(override=True)
 
 # Configure Gemini (new SDK)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 12.0})
 
 # data.gov.in Agmarknet API key (free — register at https://data.gov.in/user/register)
 DATA_GOV_API_KEY = os.getenv("DATA_GOV_API_KEY")
@@ -830,7 +830,7 @@ def chat():
             last_error = None
             for m in models_to_try:
                 try:
-                    return client.models.generate_content(model=m, contents=contents, config=config, http_options={"timeout": 12.0})
+                    return client.models.generate_content(model=m, contents=contents, config=config)
                 except Exception as e:
                     print(f"Fallback warning: Model {m} failed: {e}")
                     last_error = e
